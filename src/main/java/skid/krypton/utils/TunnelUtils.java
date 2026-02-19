@@ -3,7 +3,7 @@ package skid.krypton.utils;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
-import skid.krypton.module.modules.donut.TunnelDirection;
+import skid.krypton.manager.tunnel.TunnelDirection;  // Changed import
 
 public class TunnelUtils {
     
