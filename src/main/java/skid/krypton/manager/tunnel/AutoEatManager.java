@@ -8,8 +8,9 @@ import net.minecraft.util.Hand;
 public class AutoEatManager {
     private final MinecraftClient mc;
     private int eatTimer = 0;
+    private int foodSlot = -1;
     
-    // List of food items in Minecraft
+    // List of food items
     private final ItemStack[] FOOD_ITEMS = {
         new ItemStack(Items.APPLE),
         new ItemStack(Items.BAKED_POTATO),
@@ -39,7 +40,9 @@ public class AutoEatManager {
         new ItemStack(Items.RABBIT_STEW),
         new ItemStack(Items.SALMON),
         new ItemStack(Items.SUSPICIOUS_STEW),
-        new ItemStack(Items.SWEET_BERRIES)
+        new ItemStack(Items.SWEET_BERRIES),
+        new ItemStack(Items.GLOW_BERRIES),
+        new ItemStack(Items.CHORUS_FRUIT)
     };
     
     public AutoEatManager(MinecraftClient mc) {
@@ -54,29 +57,46 @@ public class AutoEatManager {
     }
     
     public void eat() {
-        if (eatTimer > 0) {
-            eatTimer--;
+        if (mc.player == null) return;
+        
+        // If we're already eating, continue
+        if (mc.player.isUsingItem()) {
             return;
         }
         
+        // Find food in hotbar
+        if (foodSlot == -1) {
+            findFood();
+        }
+        
+        // If we found food, eat it
+        if (foodSlot != -1) {
+            mc.player.getInventory().selectedSlot = foodSlot;
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            
+            // Reset food slot after eating
+            if (!mc.player.isUsingItem()) {
+                foodSlot = -1;
+            }
+        }
+    }
+    
+    private void findFood() {
         if (mc.player == null) return;
         
-        // Find food in hotbar by checking against food items list
         for (int i = 0; i < 9; i++) {
             ItemStack stack = mc.player.getInventory().getStack(i);
             if (isFood(stack)) {
-                mc.player.getInventory().selectedSlot = i;
-                mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-                eatTimer = 30; // 1.5 second cooldown between eats
-                break;
+                foodSlot = i;
+                return;
             }
         }
+        foodSlot = -1;
     }
     
     private boolean isFood(ItemStack stack) {
         if (stack.isEmpty()) return false;
         
-        // Check against known food items
         for (ItemStack food : FOOD_ITEMS) {
             if (stack.getItem() == food.getItem()) {
                 return true;
