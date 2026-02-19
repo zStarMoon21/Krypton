@@ -5,7 +5,6 @@ import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import skid.krypton.manager.tunnel.TunnelDirection;  // Changed import
 
 import java.util.ArrayList;
 import java.util.List;
