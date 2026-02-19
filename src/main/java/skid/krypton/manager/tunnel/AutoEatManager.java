@@ -9,6 +9,7 @@ public class AutoEatManager {
     private final MinecraftClient mc;
     private int eatTimer = 0;
     private int foodSlot = -1;
+    private boolean isEating = false;
     
     // List of food items
     private final ItemStack[] FOOD_ITEMS = {
@@ -61,23 +62,27 @@ public class AutoEatManager {
         
         // If we're already eating, continue
         if (mc.player.isUsingItem()) {
+            isEating = true;
             return;
+        } else {
+            isEating = false;
         }
         
-        // Find food in hotbar
+        // Find food in hotbar if we don't have a slot
         if (foodSlot == -1) {
             findFood();
         }
         
         // If we found food, eat it
         if (foodSlot != -1) {
-            mc.player.getInventory().selectedSlot = foodSlot;
-            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            
-            // Reset food slot after eating
-            if (!mc.player.isUsingItem()) {
-                foodSlot = -1;
+            int currentSlot = mc.player.getInventory().selectedSlot;
+            if (currentSlot != foodSlot) {
+                mc.player.getInventory().selectedSlot = foodSlot;
             }
+            
+            // Right-click to eat
+            mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
+            isEating = true;
         }
     }
     
@@ -103,5 +108,9 @@ public class AutoEatManager {
             }
         }
         return false;
+    }
+    
+    public boolean isEating() {
+        return isEating;
     }
 }
