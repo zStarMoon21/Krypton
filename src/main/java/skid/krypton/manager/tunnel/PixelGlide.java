@@ -17,6 +17,9 @@ public class PixelGlide {
     private float centerYaw, centerPitch;
     private float targetYaw, targetPitch;
     private int timer;
+    
+    // FIX: Add gliding flag
+    private boolean gliding = false;
 
     public PixelGlide(MinecraftClient mc) {
         this.mc = mc;
@@ -39,6 +42,7 @@ public class PixelGlide {
             targetYaw = centerYaw + random.nextFloat(-MAX_MOVE, MAX_MOVE);
             targetPitch = centerPitch + random.nextFloat(-MAX_MOVE, MAX_MOVE);
             timer = TICKS;
+            gliding = true; // FIX: Set gliding to true when moving
         }
 
         float t = (float) timer / TICKS;
@@ -46,5 +50,14 @@ public class PixelGlide {
         mc.player.setPitch(MathHelper.lerp(t, targetPitch, centerPitch));
 
         timer--;
+        
+        if (timer <= 0) {
+            gliding = false; // FIX: Set gliding to false when done
+        }
+    }
+    
+    // FIX: Add isGliding method
+    public boolean isGliding() {
+        return gliding;
     }
 }
