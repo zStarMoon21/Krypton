@@ -16,7 +16,6 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.Krypton;
@@ -41,7 +40,6 @@ import java.util.List;
 
 public final class TunnelBaseFinder extends Module {
 
-    // SETTINGS
     private final NumberSetting minimumStorage = new NumberSetting("Minimum Storage", 1, 500, 100, 1);
     private final BooleanSetting spawners = new BooleanSetting("Spawners", true);
     private final BooleanSetting autoEat = new BooleanSetting("Auto Eat", true);
@@ -49,19 +47,15 @@ public final class TunnelBaseFinder extends Module {
     private final BooleanSetting discordNotification = new BooleanSetting("Discord Notification", false);
     private final StringSetting webhook = new StringSetting("Webhook", "");
     private final BooleanSetting totemCheck = new BooleanSetting("Totem Check", true);
-
-    // LEGACY
     private final BooleanSetting autoTotemBuy = new BooleanSetting("Auto Totem Buy", true);
     private final NumberSetting totemSlot = new NumberSetting("Totem Slot", 1, 9, 8, 1);
     private final BooleanSetting autoMend = new BooleanSetting("Auto Mend", true);
     private final NumberSetting xpBottleSlot = new NumberSetting("XP Bottle Slot", 1, 9, 9, 1);
     private final NumberSetting totemCheckTime = new NumberSetting("Totem Check Time", 1, 120, 20, 1);
 
-    // Direction
     private TunnelDirection currentDirection;
     private Direction mcDirection;
 
-    // New Components
     private AStarPathfinder pathfinder;
     private PathRenderer pathRenderer;
     private SmartMiner miner;
@@ -75,6 +69,7 @@ public final class TunnelBaseFinder extends Module {
     private boolean mining = false;
     private int pathUpdateCooldown = 0;
     private int discoveryCooldown = 0;
+    private double actionDelay = 0;
 
     public TunnelBaseFinder() {
         super("Tunnel Base Finder", "Advanced tunnel finder", -1, Category.DONUT);
@@ -89,7 +84,6 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // Initialize components
         playerDetector = new PlayerDetectionManager(mc);
         hazardAvoid = new HazardAvoidanceManager(mc);
         pathfinder = new AStarPathfinder(mc);
@@ -103,8 +97,6 @@ public final class TunnelBaseFinder extends Module {
 
         currentDirection = TunnelUtils.getInitialDirection(mc.player);
         mcDirection = toMinecraftDirection(currentDirection);
-
-        // Initial path scan
         currentPath = pathfinder.findPath(currentDirection);
 
         super.onEnable();
@@ -112,7 +104,6 @@ public final class TunnelBaseFinder extends Module {
 
     @Override
     public void onDisable() {
-        // Stop everything
         movement.stopAll();
         if (mc.interactionManager != null) {
             mc.interactionManager.cancelBlockBreaking();
@@ -125,20 +116,17 @@ public final class TunnelBaseFinder extends Module {
     public void onTick(TickEvent e) {
         if (mc.player == null || mc.world == null) return;
 
-        // Override player input
         mc.player.input.movementForward = 0;
         mc.player.input.movementSideways = 0;
         mc.player.input.jumping = false;
         mc.player.input.sneaking = false;
 
-        // 1. Player detection
         PlayerEntity detected = playerDetector.checkForPlayers(20);
         if (detected != null) {
             disconnectWithMessage(Text.of("Player detected"));
             return;
         }
 
-        // 2. Auto eat (pauses everything)
         if (autoEat.getValue()) {
             eater.tick();
             if (eater.isEating()) {
@@ -147,16 +135,13 @@ public final class TunnelBaseFinder extends Module {
             }
         }
 
-        // 3. Random pauses
         if (pauser.shouldPause()) {
             pauseAll();
             return;
         }
 
-        // 4. Totem safety
         if (!handleTotemSafety()) return;
 
-        // 5. Update path every 10 ticks
         if (--pathUpdateCooldown <= 0) {
             currentPath = pathfinder.findPath(currentDirection);
             pathUpdateCooldown = 10;
@@ -164,12 +149,10 @@ public final class TunnelBaseFinder extends Module {
 
         BlockPos target = pathfinder.getFirstTarget();
 
-        // 6. Update aim
         if (target != null) {
             movement.updateAim(target);
         }
 
-        // 7. Mining
         if (target != null && isPlayerFacingTarget(target)) {
             miner.mine();
             mining = true;
@@ -183,16 +166,13 @@ public final class TunnelBaseFinder extends Module {
             mining = false;
         }
 
-        // 8. Movement
         updateMovement(target);
 
-        // 9. Base discovery (every 40 ticks)
         if (--discoveryCooldown <= 0) {
             checkForDiscoveries();
             discoveryCooldown = 40;
         }
 
-        // 10. Legacy features
         handleLegacyFeatures();
     }
 
@@ -209,7 +189,6 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // Check if we need to strafe (off-center)
         boolean needsStrafe = false;
         float strafeDirection = 0;
         
@@ -225,7 +204,7 @@ public final class TunnelBaseFinder extends Module {
         } else {
             if (Math.abs(xDiff) > threshold) {
                 needsStrafe = true;
-                strafeDirection = xDiff > 0 ? -1 : 1; // Inverted for correct strafe
+                strafeDirection = xDiff > 0 ? -1 : 1;
             }
         }
 
@@ -240,7 +219,7 @@ public final class TunnelBaseFinder extends Module {
                 .subtract(mc.player.getEyePos()).normalize();
         
         double dot = lookVec.dotProduct(targetVec);
-        return dot > 0.95; // ~18 degrees threshold
+        return dot > 0.95;
     }
 
     private void pauseAll() {
@@ -249,12 +228,10 @@ public final class TunnelBaseFinder extends Module {
     }
 
     private void handleLegacyFeatures() {
-        // Auto mend
         if (autoMend.getValue() && !mining) {
             checkMending();
         }
         
-        // Auto totem buy
         if (autoTotemBuy.getValue()) {
             handleTotemBuy();
         }
@@ -345,17 +322,14 @@ public final class TunnelBaseFinder extends Module {
         mc.player.networkHandler.onDisconnect(new DisconnectS2CPacket(m));
     }
 
-    // Legacy methods
     private void checkMending() {
         ItemStack mainHand = mc.player.getMainHandStack();
         if (EnchantmentUtil.hasEnchantment(mainHand, Enchantments.MENDING) && 
             mainHand.getMaxDamage() - mainHand.getDamage() < 100) {
-            // Mending logic here
         }
     }
 
     private void handleTotemBuy() {
-        // Legacy totem buy logic
     }
 
     public boolean isDigging() {
