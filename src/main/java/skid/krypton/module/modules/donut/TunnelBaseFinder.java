@@ -343,4 +343,3 @@ public final class TunnelBaseFinder extends Module {
         return digging;
     }
 }
-}
