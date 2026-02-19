@@ -10,18 +10,14 @@ public class PlayerDetectionManager {
         this.mc = mc;
     }
     
-    public PlayerEntity checkForPlayers(int radius) {
-        if (mc.world == null || mc.player == null) return null;
-        
-        for (PlayerEntity player : mc.world.getPlayers()) {
-            if (player == mc.player) continue;
-            
-            double distance = mc.player.distanceTo(player);
-            
-            if (player.isSpectator() || distance < radius) {
-                return player;
-            }
-        }
-        return null;
+public PlayerEntity checkForPlayers(int radius) {
+    if (mc.world == null || mc.player == null) return null;
+
+    for (PlayerEntity p : mc.world.getPlayers()) {
+        if (p == mc.player || p.isSpectator()) continue;
+
+        if (mc.player.distanceTo(p) <= radius) return p;
     }
+    return null;
 }
+
