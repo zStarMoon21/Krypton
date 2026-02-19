@@ -5,7 +5,6 @@ import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3i;
 
 import java.util.*;
 
@@ -35,7 +34,6 @@ public class AStarPathfinder {
         
         if (target == null) return new ArrayList<>();
         
-        // A* algorithm
         PriorityQueue<PathNode> openSet = new PriorityQueue<>();
         Set<BlockPos> closedSet = new HashSet<>();
         Map<BlockPos, PathNode> nodeMap = new HashMap<>();
@@ -46,7 +44,7 @@ public class AStarPathfinder {
         nodeMap.put(start, startNode);
         
         int iterations = 0;
-        int maxIterations = 500; // Prevent infinite loops
+        int maxIterations = 500;
         
         while (!openSet.isEmpty() && iterations < maxIterations) {
             iterations++;
@@ -58,7 +56,6 @@ public class AStarPathfinder {
             
             closedSet.add(current.pos);
             
-            // Check neighbors in 3D
             for (int x = -1; x <= 1; x++) {
                 for (int y = -1; y <= 1; y++) {
                     for (int z = -1; z <= 1; z++) {
@@ -66,14 +63,10 @@ public class AStarPathfinder {
                         
                         BlockPos neighborPos = current.pos.add(x, y, z);
                         
-                        // Don't go too far up/down
                         if (Math.abs(neighborPos.getY() - start.getY()) > SEARCH_HEIGHT) continue;
-                        
                         if (closedSet.contains(neighborPos)) continue;
                         
-                        // Check if position is walkable/mineable
                         if (!isPositionValid(neighborPos)) {
-                            // If it's a hazard, add to hazard list
                             if (isHazard(neighborPos)) {
                                 hazardPositions.add(neighborPos);
                             }
@@ -97,7 +90,6 @@ public class AStarPathfinder {
                             neighbor.parent = current;
                             neighbor.gCost = tentativeG;
                             neighbor.calculateCosts(start, target);
-                            // Re-add to update priority
                             openSet.remove(neighbor);
                             openSet.add(neighbor);
                         }
@@ -112,7 +104,6 @@ public class AStarPathfinder {
     private BlockPos findTargetPosition(BlockPos start, Direction dir, int distance) {
         for (int i = distance; i > 0; i--) {
             BlockPos check = start.offset(dir, i);
-            // Check if any blocks in this area are mineable
             for (int x = -1; x <= 1; x++) {
                 for (int y = 0; y <= 2; y++) {
                     BlockPos minePos;
@@ -136,28 +127,17 @@ public class AStarPathfinder {
         Block block = mc.world.getBlockState(to).getBlock();
         double baseCost = Math.sqrt(from.getSquaredDistance(to));
         
-        // Cost modifiers
-        if (block == Blocks.AIR) return baseCost * 0.5; // Air is cheap
-        if (isHazard(to)) return baseCost * 10; // Hazards are expensive
-        if (isUnbreakable(block)) return Double.MAX_VALUE; // Unbreakable = impossible
+        if (block == Blocks.AIR) return baseCost * 0.5;
+        if (isHazard(to)) return baseCost * 10;
+        if (isUnbreakable(block)) return Double.MAX_VALUE;
         
-        // Normal blocks have normal cost
         return baseCost;
     }
     
     private boolean isPositionValid(BlockPos pos) {
         Block block = mc.world.getBlockState(pos).getBlock();
-        
-        // Check if it's a hazard (add to hazard list but still consider)
-        if (isHazard(pos)) {
-            return false; // Don't path through hazards
-        }
-        
-        // Can't path through unbreakable blocks
-        if (isUnbreakable(block)) {
-            return false;
-        }
-        
+        if (isHazard(pos)) return false;
+        if (isUnbreakable(block)) return false;
         return true;
     }
     
@@ -191,7 +171,6 @@ public class AStarPathfinder {
             current = current.parent;
         }
         
-        // Remove start position
         if (!path.isEmpty() && path.get(0).equals(mc.player.getBlockPos())) {
             path.remove(0);
         }
@@ -209,21 +188,8 @@ public class AStarPathfinder {
         };
     }
     
-    public List<BlockPos> getCurrentPath() {
-        return currentPath;
-    }
-    
-    public List<BlockPos> getHazardPositions() {
-        return hazardPositions;
-    }
-    
-    public BlockPos getFirstTarget() {
-        return currentPath.isEmpty() ? null : currentPath.get(0);
-    }
-    
-    public void removeFirstTarget() {
-        if (!currentPath.isEmpty()) {
-            currentPath.remove(0);
-        }
-    }
+    public List<BlockPos> getCurrentPath() { return currentPath; }
+    public List<BlockPos> getHazardPositions() { return hazardPositions; }
+    public BlockPos getFirstTarget() { return currentPath.isEmpty() ? null : currentPath.get(0); }
+    public void removeFirstTarget() { if (!currentPath.isEmpty()) currentPath.remove(0); }
 }
