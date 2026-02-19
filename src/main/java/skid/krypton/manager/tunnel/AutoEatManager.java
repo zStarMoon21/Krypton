@@ -11,7 +11,7 @@ public class AutoEatManager {
     private int foodSlot = -1;
     private boolean isEating = false;
     
-    // List of food items
+    // List of food items (expanded)
     private final ItemStack[] FOOD_ITEMS = {
         new ItemStack(Items.APPLE),
         new ItemStack(Items.BAKED_POTATO),
@@ -43,7 +43,8 @@ public class AutoEatManager {
         new ItemStack(Items.SUSPICIOUS_STEW),
         new ItemStack(Items.SWEET_BERRIES),
         new ItemStack(Items.GLOW_BERRIES),
-        new ItemStack(Items.CHORUS_FRUIT)
+        new ItemStack(Items.CHORUS_FRUIT),
+        new ItemStack(Items.HONEY_BOTTLE)
     };
     
     public AutoEatManager(MinecraftClient mc) {
@@ -54,11 +55,19 @@ public class AutoEatManager {
         if (mc.player == null) return false;
         
         int foodLevel = mc.player.getHungerManager().getFoodLevel();
-        return foodLevel < 18; // Eat when less than 9 drumsticks
+        // Eat when less than 18 hunger (9 drumsticks) OR when health is low and can heal
+        boolean isLowHealth = mc.player.getHealth() < mc.player.getMaxHealth() * 0.5;
+        return foodLevel < 18 || (isLowHealth && foodLevel < 20);
     }
     
     public void eat() {
         if (mc.player == null) return;
+        
+        // Don't eat if screen is open (GUI)
+        if (mc.currentScreen != null) {
+            resetEating();
+            return;
+        }
         
         // If we're already eating, continue
         if (mc.player.isUsingItem()) {
@@ -68,7 +77,7 @@ public class AutoEatManager {
             isEating = false;
         }
         
-        // Find food in hotbar if we don't have a slot
+        // Find food if we don't have a slot
         if (foodSlot == -1) {
             findFood();
         }
@@ -80,9 +89,12 @@ public class AutoEatManager {
                 mc.player.getInventory().selectedSlot = foodSlot;
             }
             
-            // Right-click to eat
+            // Right-click to eat (works even without GUI open)
             mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
             isEating = true;
+            eatTimer = 10; // Small delay to prevent spam
+        } else {
+            resetEating();
         }
     }
     
@@ -108,6 +120,11 @@ public class AutoEatManager {
             }
         }
         return false;
+    }
+    
+    private void resetEating() {
+        foodSlot = -1;
+        isEating = false;
     }
     
     public boolean isEating() {
