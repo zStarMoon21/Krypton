@@ -27,6 +27,7 @@ import skid.krypton.module.modules.misc.AutoEat;
 import skid.krypton.module.modules.combat.AutoTotem;
 import skid.krypton.utils.embed.DiscordWebhook;
 import skid.krypton.event.EventListener;
+import skid.krypton.event.events.Render3DEvent;
 import skid.krypton.event.events.TickEvent;
 import skid.krypton.mixin.MobSpawnerLogicAccessor;
 import skid.krypton.module.Category;
@@ -40,6 +41,7 @@ import skid.krypton.utils.EnchantmentUtil;
 import skid.krypton.utils.EncryptedString;
 import skid.krypton.utils.InventoryUtil;
 import skid.krypton.utils.TunnelUtils;
+import skid.krypton.utils.RenderUtils;
 
 import java.awt.*;
 import java.time.LocalTime;
@@ -199,6 +201,7 @@ public final class TunnelBaseFinder extends Module {
         if (hazard != null) {
             currentPath = hazardAvoid.findSafePath(hazard, currentDirection);
             miner.minePath(currentPath);
+            handleMovement();
             return;
         }
 
@@ -223,6 +226,55 @@ public final class TunnelBaseFinder extends Module {
         
         // 12. BASE/SPAWNER DETECTION
         checkForDiscoveries();
+        
+        // 13. HANDLE MOVEMENT
+        handleMovement();
+    }
+
+    @EventListener
+    public void onRender3D(final Render3DEvent event) {
+        if (!this.isEnabled() || currentPath == null || currentPath.isEmpty() || this.mc.player == null) return;
+        
+        // Save the current matrix state
+        event.matrixStack.push();
+        
+        // Get camera position for proper 3D rendering
+        Vec3d camPos = RenderUtils.getCameraPos();
+        event.matrixStack.translate(-camPos.x, -camPos.y, -camPos.z);
+        
+        // Render the path lines
+        for (int i = 0; i < currentPath.size() - 1; i++) {
+            BlockPos current = currentPath.get(i);
+            BlockPos next = currentPath.get(i + 1);
+            
+            Vec3d currentPos = new Vec3d(current.getX() + 0.5, current.getY() + 0.5, current.getZ() + 0.5);
+            Vec3d nextPos = new Vec3d(next.getX() + 0.5, next.getY() + 0.5, next.getZ() + 0.5);
+            
+            // Draw line between points (cyan for path)
+            RenderUtils.renderLine(event.matrixStack, new Color(0, 255, 255, 200), currentPos, nextPos);
+        }
+        
+        // Highlight the current target block
+        if (!currentPath.isEmpty()) {
+            BlockPos target = currentPath.get(0);
+            
+            // Draw a semi-transparent box around the target
+            RenderUtils.renderFilledBox(event.matrixStack,
+                target.getX(), target.getY(), target.getZ(),
+                target.getX() + 1, target.getY() + 1, target.getZ() + 1,
+                new Color(0, 255, 0, 50));
+        }
+        
+        // If there's a hazard, highlight it in red
+        BlockPos hazard = hazardAvoid.detectHazard();
+        if (hazard != null) {
+            RenderUtils.renderFilledBox(event.matrixStack,
+                hazard.getX(), hazard.getY(), hazard.getZ(),
+                hazard.getX() + 1, hazard.getY() + 1, hazard.getZ() + 1,
+                new Color(255, 0, 0, 50));
+        }
+        
+        event.matrixStack.pop();
     }
 
     private void handlePlayerDetected(PlayerEntity player) {
@@ -237,6 +289,22 @@ public final class TunnelBaseFinder extends Module {
     private void pauseMining() {
         this.mc.options.forwardKey.setPressed(false);
         this.mc.interactionManager.cancelBlockBreaking();
+    }
+
+    private void handleMovement() {
+        if (this.mc.player == null) return;
+        
+        // Only walk forward if:
+        // 1. We're not in a random stop
+        // 2. We're not eating
+        // 3. We have a path to mine
+        // 4. No hazards detected (hazards are handled separately)
+        boolean shouldWalk = !stopManager.isStopped() 
+            && !(autoEat.getValue() && autoEatManager.shouldEat())
+            && !currentPath.isEmpty()
+            && hazardAvoid.detectHazard() == null;
+        
+        this.mc.options.forwardKey.setPressed(shouldWalk);
     }
 
     private boolean handleTotemSafety() {
@@ -452,29 +520,29 @@ public final class TunnelBaseFinder extends Module {
         }
     }
 
-private void sendDiscordNotification(String title, String description, String fieldName, String fieldValue, Color color) {
-    if (!this.discordNotification.getValue() || this.webhook.value.isEmpty()) return;
-    
-    try {
-        DiscordWebhook webhook = new DiscordWebhook(this.webhook.value);
-        DiscordWebhook.EmbedObject embed = new DiscordWebhook.EmbedObject();
+    private void sendDiscordNotification(String title, String description, String fieldName, String fieldValue, Color color) {
+        if (!this.discordNotification.getValue() || this.webhook.value.isEmpty()) return;
         
-        embed.setTitle(title);
-        embed.setThumbnail("https://render.crafty.gg/3d/bust/" + 
-            MinecraftClient.getInstance().getSession().getUuidOrNull() + "?format=webp");
-        embed.setDescription(description + " - " + MinecraftClient.getInstance().getSession().getUsername());
-        embed.setColor(color);
-        embed.setFooter(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), null);
-        embed.addField(fieldName, fieldValue, true);
-        
-        webhook.addEmbed(embed);
-        webhook.a(""); // content
-        webhook.b("Krypton Tunnel Finder"); // username
-        webhook.execute();
-    } catch (Throwable e) {
-        // Ignore
+        try {
+            DiscordWebhook webhook = new DiscordWebhook(this.webhook.value);
+            DiscordWebhook.EmbedObject embed = new DiscordWebhook.EmbedObject();
+            
+            embed.setTitle(title);
+            embed.setThumbnail("https://render.crafty.gg/3d/bust/" + 
+                MinecraftClient.getInstance().getSession().getUuidOrNull() + "?format=webp");
+            embed.setDescription(description + " - " + MinecraftClient.getInstance().getSession().getUsername());
+            embed.setColor(color);
+            embed.setFooter(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), null);
+            embed.addField(fieldName, fieldValue, true);
+            
+            webhook.addEmbed(embed);
+            webhook.a(""); // content
+            webhook.b("Krypton Tunnel Finder"); // username
+            webhook.execute();
+        } catch (Throwable e) {
+            // Ignore
+        }
     }
-}
 
     private void disconnectWithMessage(final Text text) {
         final MutableText literal = Text.literal("[TunnelBaseFinder] ");
