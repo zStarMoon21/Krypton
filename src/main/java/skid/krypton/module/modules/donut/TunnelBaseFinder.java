@@ -20,6 +20,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.Krypton;
@@ -41,7 +42,6 @@ import skid.krypton.utils.EnchantmentUtil;
 import skid.krypton.utils.EncryptedString;
 import skid.krypton.utils.InventoryUtil;
 import skid.krypton.utils.TunnelUtils;
-import skid.krypton.utils.RenderUtils;
 
 import java.awt.*;
 import java.time.LocalTime;
@@ -59,17 +59,19 @@ public final class TunnelBaseFinder extends Module {
     private final StringSetting webhook = new StringSetting(EncryptedString.of("Webhook"), "");
     private final BooleanSetting totemCheck = new BooleanSetting(EncryptedString.of("Totem Check"), true);
     
-    // Legacy settings
+    // Legacy settings (keeping for compatibility)
     private final BooleanSetting autoTotemBuy = new BooleanSetting(EncryptedString.of("Auto Totem Buy"), true);
     private final NumberSetting totemSlot = new NumberSetting(EncryptedString.of("Totem Slot"), 1.0, 9.0, 8.0, 1.0);
     private final BooleanSetting autoMend = new BooleanSetting(EncryptedString.of("Auto Mend"), true);
     private final NumberSetting xpBottleSlot = new NumberSetting(EncryptedString.of("XP Bottle Slot"), 1.0, 9.0, 9.0, 1.0);
     private final NumberSetting totemCheckTime = new NumberSetting(EncryptedString.of("Totem Check Time"), 1.0, 120.0, 20.0, 1.0);
 
-    // Direction and movement
+    // Direction
     private TunnelDirection currentDirection;
+    private Direction mcDirection;
+    
+    // Legacy movement vars
     private int blocksMined;
-    private int spawnerCount;
     private int idleTicks;
     private Vec3d lastPosition;
     private boolean isDigging = false;
@@ -78,15 +80,15 @@ public final class TunnelBaseFinder extends Module {
     private int totemBuyCounter = 0;
     private double actionDelay = 0.0;
 
-    // NEW INTEGRATED MANAGERS
-    private RandomStopManager stopManager;
-    private PixelGlideManager pixelGlide;
+    // NEW COMPONENTS
+    private PathScanner pathScanner;
+    private PathRenderer pathRenderer;
+    private PreciseMiner miner;
+    private PixelGlide pixelGlide;
+    private RandomPause randomPause;
+    private FoodEater foodEater;
     private PlayerDetectionManager playerDetector;
     private HazardAvoidanceManager hazardAvoid;
-    private AutoEatManager autoEatManager;
-    private PathFinder pathFinder;
-    private TunnelMiningManager miner;
-    private PathRenderer pathRenderer;
     private List<BlockPos> currentPath = new ArrayList<>();
 
     public TunnelBaseFinder() {
@@ -114,25 +116,27 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
         
-        // Initialize all managers
-        this.stopManager = new RandomStopManager();
+        // Initialize ALL new components
         this.playerDetector = new PlayerDetectionManager(this.mc);
         this.hazardAvoid = new HazardAvoidanceManager(this.mc);
-        this.autoEatManager = new AutoEatManager(this.mc);
-        
-        // NEW INTEGRATED SYSTEM
-        this.pathFinder = new PathFinder(this.mc, this.hazardAvoid);
-        this.pixelGlide = new PixelGlideManager(this.mc);
-        this.miner = new TunnelMiningManager(this.mc);
+        this.pathScanner = new PathScanner(this.mc);
         this.pathRenderer = new PathRenderer(this.mc);
-        this.pathRenderer.setPathFinder(this.pathFinder);
+        this.miner = new PreciseMiner(this.mc);
+        this.pixelGlide = new PixelGlide(this.mc);
+        this.randomPause = new RandomPause();
+        this.foodEater = new FoodEater(this.mc);
         
+        // Set initial direction
         this.currentDirection = TunnelUtils.getInitialDirection(this.mc.player);
+        this.mcDirection = toMinecraftDirection(currentDirection);
+        
+        // Scan initial path
+        this.currentPath = pathScanner.scanPath(currentDirection, 10);
+        this.pathRenderer.updatePath(currentPath);
+        
+        // Reset all state
         this.blocksMined = 0;
         this.idleTicks = 0;
-        this.spawnerCount = 0;
-        this.lastPosition = null;
-        this.currentPath = pathFinder.findPath(currentDirection, 5);
         this.isDigging = false;
         this.shouldDig = false;
         this.totemBuyCounter = 0;
@@ -144,18 +148,24 @@ public final class TunnelBaseFinder extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        // Reset all key presses and release control
-        this.mc.options.leftKey.setPressed(false);
-        this.mc.options.rightKey.setPressed(false);
+        
+        // Release ALL controls
         this.mc.options.forwardKey.setPressed(false);
         this.mc.options.backKey.setPressed(false);
+        this.mc.options.leftKey.setPressed(false);
+        this.mc.options.rightKey.setPressed(false);
         this.mc.options.jumpKey.setPressed(false);
         this.mc.options.sneakKey.setPressed(false);
         
+        // Stop mining
         if (this.mc.interactionManager != null) {
             this.mc.interactionManager.cancelBlockBreaking();
-            miner.resetMining();
+            miner.stopMining();
         }
+        
+        // Reset all components
+        if (randomPause != null) randomPause.resetPause();
+        if (foodEater != null) foodEater.reset();
     }
 
     @EventListener
@@ -164,7 +174,9 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // Override player control - module takes over completely
+        // ===========================================
+        // OVERRIDE PLAYER CONTROL - MODULE TAKES OVER
+        // ===========================================
         this.mc.player.input.movementForward = 0;
         this.mc.player.input.movementSideways = 0;
         this.mc.player.input.jumping = false;
@@ -177,87 +189,76 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 2. AUTO EAT
-        if (autoEat.getValue() && autoEatManager.shouldEat()) {
-            autoEatManager.eat();
-            pauseMining();
-            return;
-        }
-
-        // 3. RANDOM STOPS
-        if (stopManager.shouldStop()) {
-            stopManager.executeStop();
-            pauseMining();
-            return;
-        }
-
-        // 4. TOTEM SAFETY CHECK
+        // 2. TOTEM SAFETY CHECK
         if (!handleTotemSafety()) {
             return;
         }
 
-        // 5. AUTO MEND CHECK
+        // 3. AUTO EAT - Pauses everything while eating
+        if (autoEat.getValue() && foodEater.needsFood()) {
+            foodEater.eat();
+            pauseAllActivity();
+            return;
+        }
+
+        // 4. RANDOM PAUSES - Anti-detection
+        if (randomPause.shouldPause()) {
+            pauseAllActivity();
+            return;
+        }
+
+        // 5. AUTO MEND CHECK (legacy)
         if (this.autoMend.getValue() && !this.isDigging) {
             checkMending();
         }
 
-        // 6. XP BOTTLE MENDING
+        // 6. XP BOTTLE MENDING (legacy)
         if (this.isDigging) {
             handleMending();
             return;
         }
 
-        // 7. AUTO TOTEM BUY (Legacy)
+        // 7. AUTO TOTEM BUY (legacy)
         if (this.autoTotemBuy.getValue() && !handleTotemBuy()) {
             return;
         }
 
-        // 8. HAZARD DETECTION & PATH UPDATING
+        // 8. SCAN FOR HAZARDS AND UPDATE PATH
         BlockPos hazard = hazardAvoid.detectHazard();
-        pathRenderer.setHazard(hazard);
-
-        // Get current path from pathFinder
-        currentPath = pathFinder.getCurrentPath();
-
-        // 9. PATH FINDING (if needed)
-        if (currentPath.isEmpty() || pathFinder.isPathFinished()) {
-            currentPath = pathFinder.findPath(currentDirection, 5);
+        if (hazard != null) {
+            // Hazard detected, rescan path
+            currentPath = pathScanner.scanPath(currentDirection, 10);
+            pathRenderer.updatePath(currentPath);
         }
 
-        // 10. MINING WITH PIXEL GLIDE
-        if (!currentPath.isEmpty()) {
-            BlockPos target = pathFinder.getCurrentTarget();
-            
-            if (target != null) {
-                double distance = this.mc.player.getBlockPos().getManhattanDistance(target);
-                
-                // Only try to mine if we're close enough
-                if (distance <= 5) {
-                    // Pixel-perfect gliding to target
-                    pixelGlide.glideToCenter(target);
-                    
-                    // Mine only what's in crosshair
-                    miner.mineTarget(target);
-                    
-                    // Check if block is mined
-                    if (miner.isBlockMined(target)) {
-                        pathFinder.removeCurrentTarget();
-                    }
-                }
-            }
+        // 9. GET CURRENT PATH AND TARGET
+        currentPath = pathScanner.getCurrentPath();
+        BlockPos target = pathScanner.getNextTarget();
+        
+        // Update renderer with current path
+        pathRenderer.updatePath(currentPath);
+
+        // 10. UPDATE DIRECTION IF NEEDED
+        updateDirection();
+
+        // 11. MINE THE BLOCK WE'RE LOOKING AT
+        miner.mine();
+        
+        // Check if target block is mined and remove from path
+        if (target != null && miner.isBlockMined(target)) {
+            pathScanner.removeTarget(target);
         }
 
-        // 11. DIRECTION ALIGNMENT
-        alignToDirection();
-        
-        // 12. BASE/SPAWNER DETECTION
-        checkForDiscoveries();
-        
-        // 13. CONTROL MOVEMENT (module takes over)
+        // 12. SUBTLE MOUSE GLIDE (center pixel only)
+        if (target != null) {
+            pixelGlide.update(target);
+        }
+
+        // 13. CONTROL MOVEMENT - Walk along the path
         controlMovement();
-        
-        // 14. Update path finder
-        pathFinder.updateTarget();
+
+        // 14. BASE/SPAWNER DETECTION
+        checkForDiscoveries();
     }
 
     @EventListener
@@ -267,57 +268,91 @@ public final class TunnelBaseFinder extends Module {
     }
 
     /**
-     * Controls player movement - module takes full control
+     * Controls movement along the path
      */
     private void controlMovement() {
         if (this.mc.player == null) return;
         
-        // Check if we should move forward
-        boolean shouldMove = !stopManager.isStopped() 
-            && !(autoEat.getValue() && autoEatManager.shouldEat())
-            && !currentPath.isEmpty()
-            && hazardAvoid.detectHazard() == null
-            && pathFinder.getCurrentTarget() != null
-            && !pixelGlide.isGliding();
+        // Don't move if paused, eating, or gliding
+        if (randomPause.isPaused() || 
+            (autoEat.getValue() && foodEater.isEating()) ||
+            pixelGlide.isGliding()) {
+            stopMovement();
+            return;
+        }
         
-        if (shouldMove) {
-            // Move forward
-            this.mc.options.forwardKey.setPressed(true);
-            
-            // Small strafe correction to stay centered in tunnel
-            double xDiff = (this.mc.player.getX() % 1) - 0.5;
-            double zDiff = (this.mc.player.getZ() % 1) - 0.5;
-            
-            // Correct for X-axis drift
-            if (Math.abs(xDiff) > 0.3) {
-                if (xDiff > 0) {
-                    this.mc.options.rightKey.setPressed(true);
-                    this.mc.options.leftKey.setPressed(false);
-                } else {
-                    this.mc.options.rightKey.setPressed(false);
-                    this.mc.options.leftKey.setPressed(true);
-                }
-            } else {
-                this.mc.options.rightKey.setPressed(false);
-                this.mc.options.leftKey.setPressed(false);
-            }
-            
-            // Correct for Z-axis drift
-            if (Math.abs(zDiff) > 0.3) {
-                if (zDiff > 0) {
-                    this.mc.options.rightKey.setPressed(true);
-                    this.mc.options.leftKey.setPressed(false);
-                } else {
-                    this.mc.options.rightKey.setPressed(false);
-                    this.mc.options.leftKey.setPressed(true);
-                }
-            }
+        // Don't move if no path
+        if (currentPath.isEmpty()) {
+            stopMovement();
+            return;
+        }
+        
+        // Get current target
+        BlockPos target = pathScanner.getNextTarget();
+        if (target == null) {
+            stopMovement();
+            return;
+        }
+        
+        // Move forward
+        this.mc.options.forwardKey.setPressed(true);
+        
+        // Center correction - keep player in middle of tunnel
+        double xDiff = (this.mc.player.getX() % 1) - 0.5;
+        double zDiff = (this.mc.player.getZ() % 1) - 0.5;
+        double threshold = 0.3;
+        
+        // Correct X-axis drift
+        if (Math.abs(xDiff) > threshold) {
+            boolean pressRight = xDiff > 0;
+            this.mc.options.rightKey.setPressed(pressRight);
+            this.mc.options.leftKey.setPressed(!pressRight);
         } else {
-            // Stop all movement
-            this.mc.options.forwardKey.setPressed(false);
             this.mc.options.rightKey.setPressed(false);
             this.mc.options.leftKey.setPressed(false);
-            this.mc.options.backKey.setPressed(false);
+        }
+        
+        // Correct Z-axis drift (for north/south tunneling)
+        if (mcDirection == Direction.NORTH || mcDirection == Direction.SOUTH) {
+            if (Math.abs(zDiff) > threshold) {
+                boolean pressRight = zDiff > 0;
+                this.mc.options.rightKey.setPressed(pressRight);
+                this.mc.options.leftKey.setPressed(!pressRight);
+            }
+        }
+    }
+
+    private void stopMovement() {
+        this.mc.options.forwardKey.setPressed(false);
+        this.mc.options.rightKey.setPressed(false);
+        this.mc.options.leftKey.setPressed(false);
+    }
+
+    private void pauseAllActivity() {
+        stopMovement();
+        miner.stopMining();
+    }
+
+    private void updateDirection() {
+        // Update direction if needed based on player position
+        // This keeps the player aligned with the tunnel
+        float targetYaw = TunnelUtils.getDirectionYaw(currentDirection);
+        float currentYaw = this.mc.player.getYaw();
+        
+        float diff = targetYaw - currentYaw;
+        if (Math.abs(diff) > 1 && !pixelGlide.isGliding()) {
+            this.mc.player.setYaw(currentYaw + diff * 0.1f);
+        }
+        this.mc.player.setPitch(2.0f);
+    }
+
+    private Direction toMinecraftDirection(TunnelDirection dir) {
+        switch(dir) {
+            case NORTH: return Direction.NORTH;
+            case SOUTH: return Direction.SOUTH;
+            case EAST: return Direction.EAST;
+            case WEST: return Direction.WEST;
+            default: return Direction.NORTH;
         }
     }
 
@@ -328,14 +363,6 @@ public final class TunnelBaseFinder extends Module {
             "Player found at " + location, 
             "Player Detected", location, Color.RED);
         this.disconnectWithMessage(Text.of("(TunnelBaseFinder) Player Detected!"));
-    }
-
-    private void pauseMining() {
-        this.mc.options.forwardKey.setPressed(false);
-        if (this.mc.interactionManager != null) {
-            this.mc.interactionManager.cancelBlockBreaking();
-            miner.resetMining();
-        }
     }
 
     private boolean handleTotemSafety() {
@@ -364,6 +391,7 @@ public final class TunnelBaseFinder extends Module {
         return true;
     }
 
+    // Legacy methods (keeping for compatibility)
     private void checkMending() {
         final ItemStack mainHand = this.mc.player.getMainHandStack();
         if (EnchantmentUtil.hasEnchantment(mainHand, Enchantments.MENDING) && 
@@ -482,17 +510,6 @@ public final class TunnelBaseFinder extends Module {
         return false;
     }
 
-    private void alignToDirection() {
-        float targetYaw = TunnelUtils.getDirectionYaw(currentDirection);
-        float currentYaw = this.mc.player.getYaw();
-        
-        float diff = targetYaw - currentYaw;
-        if (Math.abs(diff) > 1 && !pixelGlide.isGliding()) {
-            this.mc.player.setYaw(currentYaw + diff * 0.1f);
-        }
-        this.mc.player.setPitch(2.0f);
-    }
-
     private void checkForDiscoveries() {
         int storageCount = 0;
         BlockPos spawnerPos = null;
@@ -582,7 +599,7 @@ public final class TunnelBaseFinder extends Module {
         this.mc.player.networkHandler.onDisconnect(new DisconnectS2CPacket(literal));
     }
 
-    // Legacy methods kept for compatibility
+    // Legacy method
     private int calculateDirection(final TunnelDirection dir) {
         switch(dir) {
             case NORTH: return 180;
