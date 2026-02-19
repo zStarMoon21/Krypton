@@ -86,6 +86,7 @@ public final class TunnelBaseFinder extends Module {
     private AutoEatManager autoEatManager;
     private TunnelPathManager pathFinder;
     private TunnelMiningManager miner;
+    private PathRenderer pathRenderer; // New PathRenderer
     private List<BlockPos> currentPath = new ArrayList<>();
 
     public TunnelBaseFinder() {
@@ -121,6 +122,7 @@ public final class TunnelBaseFinder extends Module {
         this.autoEatManager = new AutoEatManager(this.mc);
         this.pathFinder = new TunnelPathManager(this.mc);
         this.miner = new TunnelMiningManager(this.mc);
+        this.pathRenderer = new PathRenderer(this.mc); // Initialize PathRenderer
         
         this.currentDirection = TunnelUtils.getInitialDirection(this.mc.player);
         this.blocksMined = 0;
@@ -198,8 +200,11 @@ public final class TunnelBaseFinder extends Module {
 
         // 8. HAZARD AVOIDANCE
         BlockPos hazard = hazardAvoid.detectHazard();
+        pathRenderer.setHazard(hazard); // Update hazard for rendering
+        
         if (hazard != null) {
             currentPath = hazardAvoid.findSafePath(hazard, currentDirection);
+            pathRenderer.setPath(currentPath); // Update path for rendering
             miner.minePath(currentPath);
             handleMovement();
             return;
@@ -208,16 +213,23 @@ public final class TunnelBaseFinder extends Module {
         // 9. PATH FINDING
         if (currentPath.isEmpty() || miner.isPathFinished(currentPath)) {
             currentPath = pathFinder.findPath(currentDirection, 5);
+            pathRenderer.setPath(currentPath); // Update path for rendering
         }
 
         // 10. MINING WITH MOUSE GLIDE
         if (!currentPath.isEmpty()) {
             BlockPos target = currentPath.get(0);
-            mouseGlide.glideToBlock(target);
-            miner.mineBlock(target);
+            
+            // Only try to mine if we're close enough
+            double distance = this.mc.player.getBlockPos().getManhattanDistance(target);
+            if (distance <= 5) {
+                mouseGlide.glideToBlock(target);
+                miner.mineBlock(target);
+            }
             
             if (miner.isBlockMined(target)) {
                 currentPath.remove(0);
+                pathRenderer.setPath(currentPath); // Update path after removal
             }
         }
 
@@ -233,48 +245,8 @@ public final class TunnelBaseFinder extends Module {
 
     @EventListener
     public void onRender3D(final Render3DEvent event) {
-        if (!this.isEnabled() || currentPath == null || currentPath.isEmpty() || this.mc.player == null) return;
-        
-        // Save the current matrix state
-        event.matrixStack.push();
-        
-        // Get camera position for proper 3D rendering
-        Vec3d camPos = RenderUtils.getCameraPos();
-        event.matrixStack.translate(-camPos.x, -camPos.y, -camPos.z);
-        
-        // Render the path lines
-        for (int i = 0; i < currentPath.size() - 1; i++) {
-            BlockPos current = currentPath.get(i);
-            BlockPos next = currentPath.get(i + 1);
-            
-            Vec3d currentPos = new Vec3d(current.getX() + 0.5, current.getY() + 0.5, current.getZ() + 0.5);
-            Vec3d nextPos = new Vec3d(next.getX() + 0.5, next.getY() + 0.5, next.getZ() + 0.5);
-            
-            // Draw line between points (cyan for path)
-            RenderUtils.renderLine(event.matrixStack, new Color(0, 255, 255, 200), currentPos, nextPos);
-        }
-        
-        // Highlight the current target block
-        if (!currentPath.isEmpty()) {
-            BlockPos target = currentPath.get(0);
-            
-            // Draw a semi-transparent box around the target
-            RenderUtils.renderFilledBox(event.matrixStack,
-                target.getX(), target.getY(), target.getZ(),
-                target.getX() + 1, target.getY() + 1, target.getZ() + 1,
-                new Color(0, 255, 0, 50));
-        }
-        
-        // If there's a hazard, highlight it in red
-        BlockPos hazard = hazardAvoid.detectHazard();
-        if (hazard != null) {
-            RenderUtils.renderFilledBox(event.matrixStack,
-                hazard.getX(), hazard.getY(), hazard.getZ(),
-                hazard.getX() + 1, hazard.getY() + 1, hazard.getZ() + 1,
-                new Color(255, 0, 0, 50));
-        }
-        
-        event.matrixStack.pop();
+        if (!this.isEnabled() || pathRenderer == null) return;
+        pathRenderer.render(event.matrixStack, event.tickDelta);
     }
 
     private void handlePlayerDetected(PlayerEntity player) {
@@ -294,15 +266,21 @@ public final class TunnelBaseFinder extends Module {
     private void handleMovement() {
         if (this.mc.player == null) return;
         
-        // Only walk forward if:
-        // 1. We're not in a random stop
-        // 2. We're not eating
-        // 3. We have a path to mine
-        // 4. No hazards detected (hazards are handled separately)
-        boolean shouldWalk = !stopManager.isStopped() 
-            && !(autoEat.getValue() && autoEatManager.shouldEat())
-            && !currentPath.isEmpty()
-            && hazardAvoid.detectHazard() == null;
+        // Don't walk if we're eating or in a random stop
+        if (stopManager.isStopped() || (autoEat.getValue() && autoEatManager.shouldEat())) {
+            this.mc.options.forwardKey.setPressed(false);
+            return;
+        }
+        
+        // Don't walk if there's a hazard
+        if (hazardAvoid.detectHazard() != null) {
+            this.mc.options.forwardKey.setPressed(false);
+            return;
+        }
+        
+        // Walk if we have a path and are facing the right direction
+        boolean shouldWalk = !currentPath.isEmpty() && 
+                            Math.abs(TunnelUtils.getDirectionYaw(currentDirection) - this.mc.player.getYaw()) < 30;
         
         this.mc.options.forwardKey.setPressed(shouldWalk);
     }
