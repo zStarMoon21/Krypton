@@ -78,6 +78,9 @@ public final class TunnelBaseFinder extends Module {
     private int discoveryCooldown = 0;
     private boolean waitingForBlockBreak = false;
     private double actionDelay = 0;
+    
+    // FIX 1: Add digging flag for AutoTotem compatibility
+    private boolean digging = false;
 
     public TunnelBaseFinder() {
         super("Tunnel Base Finder", "Advanced tunnel finder", -1, Category.DONUT);
@@ -160,7 +163,8 @@ public final class TunnelBaseFinder extends Module {
             pathScanCooldown = 10;
         }
 
-        BlockPos target = pathScanner.getNextTarget();
+        // FIX 2: Use getFirstTarget() instead of getNextTarget()
+        BlockPos target = pathScanner.getFirstTarget();
 
         updateDirection();
 
@@ -174,12 +178,18 @@ public final class TunnelBaseFinder extends Module {
         // Mining sync
         if (target != null) {
             miner.mine();
+            // FIX 3: Set digging flag for AutoTotem
+            digging = true;
+            
             if (miner.isBlockMined(target)) {
-                pathScanner.removeTarget(target);
+                // FIX 4: Use removeFirstTarget() instead of removeTarget()
+                pathScanner.removeFirstTarget();
                 waitingForBlockBreak = false;
             } else {
                 waitingForBlockBreak = true;
             }
+        } else {
+            digging = false;
         }
 
         // Pixel glide aim
@@ -215,10 +225,19 @@ public final class TunnelBaseFinder extends Module {
 
         boolean correct = false;
 
-        if (Math.abs(xDiff) > threshold) {
-            correct = true;
-            mc.options.rightKey.setPressed(xDiff > 0);
-            mc.options.leftKey.setPressed(xDiff < 0);
+        // Only correct the axis we're tunneling in
+        if (mcDirection.getAxis() == Direction.Axis.X) {
+            if (Math.abs(zDiff) > threshold) {
+                correct = true;
+                mc.options.rightKey.setPressed(zDiff > 0);
+                mc.options.leftKey.setPressed(zDiff < 0);
+            }
+        } else { // Z axis
+            if (Math.abs(xDiff) > threshold) {
+                correct = true;
+                mc.options.rightKey.setPressed(xDiff > 0);
+                mc.options.leftKey.setPressed(xDiff < 0);
+            }
         }
 
         if (!correct) {
@@ -240,7 +259,8 @@ public final class TunnelBaseFinder extends Module {
 
     // ================= ROTATION =================
     private void updateDirection() {
-        if (pixelGlide.isGliding()) return;
+        // FIX 5: Comment out isGliding check or add it to PixelGlide
+        // if (pixelGlide.isGliding()) return;
 
         float targetYaw = TunnelUtils.getDirectionYaw(currentDirection);
         float yaw = mc.player.getYaw();
@@ -317,4 +337,10 @@ public final class TunnelBaseFinder extends Module {
         toggle();
         mc.player.networkHandler.onDisconnect(new DisconnectS2CPacket(m));
     }
+    
+    // FIX 6: Add isDigging() method for AutoTotem compatibility
+    public boolean isDigging() {
+        return digging;
+    }
+}
 }
