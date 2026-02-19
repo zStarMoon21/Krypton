@@ -12,7 +12,7 @@ public class PathScanner {
     private final MinecraftClient mc;
     private final Map<BlockPos, Boolean> hazardCache = new HashMap<>();
 
-    private List<BlockPos> currentPath = new ArrayList<>();
+    private List<BlockPos> path = new ArrayList<>(); // Make sure this variable exists
     private List<BlockPos> hazardList = new ArrayList<>();
     private Direction currentDirection;
 
@@ -28,14 +28,14 @@ public class PathScanner {
     }
 
     public List<BlockPos> scanPath(TunnelDirection dir) {
-        if (mc.player == null || mc.world == null) return currentPath;
+        if (mc.player == null || mc.world == null) return path;
 
         currentDirection = toMinecraftDirection(dir);
         BlockPos playerPos = mc.player.getBlockPos();
 
         tickCounter++;
         if (tickCounter < SCAN_INTERVAL && lastScanPos != null && playerPos.getManhattanDistance(lastScanPos) < 3) {
-            return currentPath;
+            return path;
         }
 
         tickCounter = 0;
@@ -43,20 +43,20 @@ public class PathScanner {
         hazardCache.clear();
         hazardList.clear();
 
-        List<BlockPos> path = new ArrayList<>();
+        List<BlockPos> newPath = new ArrayList<>();
 
         for (int i = 1; i <= SCAN_DISTANCE; i++) {
             BlockPos pos = playerPos.offset(currentDirection, i);
 
             if (isHazardNearby(pos)) {
-                path.addAll(makeDetour(pos));
+                newPath.addAll(makeDetour(pos));
                 break;
             }
 
-            path.add(pos);
+            newPath.add(pos);
         }
 
-        currentPath = path;
+        path = newPath;
         return path;
     }
 
@@ -80,6 +80,7 @@ public class PathScanner {
 
     private List<BlockPos> makeDetour(BlockPos hazardPos) {
         List<BlockPos> detour = new ArrayList<>();
+        BlockPos playerPos = mc.player.getBlockPos();
 
         Direction left = currentDirection.rotateYCounterclockwise();
         Direction right = currentDirection.rotateYClockwise();
@@ -105,6 +106,24 @@ public class PathScanner {
         };
     }
 
-    public List<BlockPos> getCurrentPath() { return currentPath; }
-    public List<BlockPos> getHazardList() { return hazardList; }
+    // FIX: Add getFirstTarget() method
+    public BlockPos getFirstTarget() {
+        if (path == null || path.isEmpty()) return null;
+        return path.get(0);
+    }
+
+    // FIX: Add removeFirstTarget() method
+    public void removeFirstTarget() {
+        if (path != null && !path.isEmpty()) {
+            path.remove(0);
+        }
+    }
+
+    public List<BlockPos> getCurrentPath() { 
+        return path; 
+    }
+    
+    public List<BlockPos> getHazardList() { 
+        return hazardList; 
+    }
 }
