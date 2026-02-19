@@ -452,27 +452,29 @@ public final class TunnelBaseFinder extends Module {
         }
     }
 
-    private void sendDiscordNotification(String title, String description, String fieldName, String fieldValue, Color color) {
-        if (!this.discordNotification.getValue() || this.webhook.value.isEmpty()) return;
+private void sendDiscordNotification(String title, String description, String fieldName, String fieldValue, Color color) {
+    if (!this.discordNotification.getValue() || this.webhook.value.isEmpty()) return;
+    
+    try {
+        DiscordWebhook webhook = new DiscordWebhook(this.webhook.value);
+        DiscordWebhook.EmbedObject embed = new DiscordWebhook.EmbedObject();
         
-        try {
-            DiscordWebhook webhook = new DiscordWebhook(this.webhook.value);
-            DiscordWebhook.EmbedObject embed = new DiscordWebhook.EmbedObject();
-            
-            embed.setTitle(title);
-            embed.setThumbnail("https://render.crafty.gg/3d/bust/" + 
-                MinecraftClient.getInstance().getSession().getUuidOrNull() + "?format=webp");
-            embed.setDescription(description + " - " + MinecraftClient.getInstance().getSession().getUsername());
-            embed.setColor(color);
-            embed.setFooter(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), null);
-            embed.addField(fieldName, fieldValue, true);
-            
-            webhook.addEmbed(embed);
-            webhook.execute();
-        } catch (Exception e) {
-            // Ignore
-        }
+        embed.setTitle(title);
+        embed.setThumbnail("https://render.crafty.gg/3d/bust/" + 
+            MinecraftClient.getInstance().getSession().getUuidOrNull() + "?format=webp");
+        embed.setDescription(description + " - " + MinecraftClient.getInstance().getSession().getUsername());
+        embed.setColor(color);
+        embed.setFooter(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), null);
+        embed.addField(fieldName, fieldValue, true);
+        
+        webhook.addEmbed(embed);
+        webhook.a(""); // content
+        webhook.b("Krypton Tunnel Finder"); // username
+        webhook.execute();
+    } catch (Throwable e) {
+        // Ignore
     }
+}
 
     private void disconnectWithMessage(final Text text) {
         final MutableText literal = Text.literal("[TunnelBaseFinder] ");
