@@ -11,17 +11,14 @@ public class NaturalMovement {
     private final MinecraftClient mc;
     private final Random random = new Random();
     
-    // Movement settings
-    private static final float MAX_PIXEL_MOVE = 0.12f; // ~2-3 pixels
+    private static final float MAX_PIXEL_MOVE = 0.12f;
     private static final int GLIDE_TICKS = 12;
     
-    // Glide state
     private float targetYaw, targetPitch;
     private float centerYaw, centerPitch;
     private int glideTimer = 0;
     private boolean isGliding = false;
     
-    // Movement smoothing
     private float forwardVelocity = 0;
     private float strafeVelocity = 0;
     private static final float ACCELERATION = 0.15f;
@@ -34,7 +31,6 @@ public class NaturalMovement {
     public void updateAim(BlockPos target) {
         if (target == null || mc.player == null) return;
         
-        // Calculate perfect center
         Vec3d eyePos = mc.player.getEyePos();
         Vec3d blockCenter = new Vec3d(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
         Vec3d direction = blockCenter.subtract(eyePos).normalize();
@@ -44,7 +40,6 @@ public class NaturalMovement {
         
         newCenterYaw = MathHelper.wrapDegrees(newCenterYaw);
         
-        // Start new glide if target changed
         if (centerYaw != newCenterYaw || centerPitch != newCenterPitch) {
             centerYaw = newCenterYaw;
             centerPitch = newCenterPitch;
@@ -75,12 +70,10 @@ public class NaturalMovement {
         float progress = 1.0f - ((float) glideTimer / GLIDE_TICKS);
         
         if (progress < 0.5f) {
-            // Move away from center
             float t = progress * 2;
             mc.player.setYaw(MathHelper.lerp(t, centerYaw, targetYaw));
             mc.player.setPitch(MathHelper.lerp(t, centerPitch, targetPitch));
         } else {
-            // Move back to center
             float t = (progress - 0.5f) * 2;
             mc.player.setYaw(MathHelper.lerp(t, targetYaw, centerYaw));
             mc.player.setPitch(MathHelper.lerp(t, targetPitch, centerPitch));
@@ -90,14 +83,12 @@ public class NaturalMovement {
     }
     
     public void updateMovement(boolean shouldMove, boolean needsStrafe, float strafeDirection) {
-        // Smooth forward movement
         if (shouldMove) {
             forwardVelocity = Math.min(forwardVelocity + ACCELERATION, 1.0f);
         } else {
             forwardVelocity = Math.max(forwardVelocity - DECELERATION, 0);
         }
         
-        // Smooth strafe movement
         if (needsStrafe) {
             strafeVelocity = strafeDirection * Math.min(Math.abs(strafeVelocity) + ACCELERATION, 1.0f);
         } else {
@@ -105,7 +96,6 @@ public class NaturalMovement {
             if (Math.abs(strafeVelocity) < 0.01f) strafeVelocity = 0;
         }
         
-        // Apply movement
         mc.options.forwardKey.setPressed(forwardVelocity > 0.5f);
         
         if (strafeVelocity > 0.1f) {
