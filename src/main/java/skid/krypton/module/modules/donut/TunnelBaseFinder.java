@@ -73,6 +73,8 @@ public final class TunnelBaseFinder extends Module {
     // Legacy movement vars
     private int blocksMined;
     private int idleTicks;
+    private int spawnerCount;
+    private int storageCount;
     private Vec3d lastPosition;
     private boolean isDigging = false;
     private boolean shouldDig = false;
