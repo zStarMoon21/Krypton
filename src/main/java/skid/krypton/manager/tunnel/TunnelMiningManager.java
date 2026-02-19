@@ -3,6 +3,7 @@ package skid.krypton.manager.tunnel;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -11,6 +12,7 @@ import java.util.List;
 
 public class TunnelMiningManager {
     private final MinecraftClient mc;
+    private BlockPos currentTarget = null;
     
     public TunnelMiningManager(MinecraftClient mc) {
         this.mc = mc;
@@ -20,20 +22,34 @@ public class TunnelMiningManager {
         if (pos == null || mc.world == null || mc.player == null) return;
         if (mc.world.getBlockState(pos).isAir()) return;
         
-        Vec3d hitVec = new Vec3d(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
-        BlockHitResult hitResult = new BlockHitResult(hitVec, Direction.UP, pos, false);
-        
-        mc.interactionManager.updateBlockBreakingProgress(pos, hitResult.getSide());
-        mc.player.swingHand(Hand.MAIN_HAND);
+        // Only mine if this is the block we're looking at
+        if (mc.crosshairTarget instanceof BlockHitResult) {
+            BlockHitResult hitResult = (BlockHitResult) mc.crosshairTarget;
+            BlockPos lookingAt = hitResult.getBlockPos();
+            
+            // Only mine if the target block matches what we're looking at
+            if (lookingAt.equals(pos)) {
+                mc.interactionManager.updateBlockBreakingProgress(pos, hitResult.getSide());
+                mc.player.swingHand(Hand.MAIN_HAND);
+                currentTarget = pos;
+            }
+        }
     }
     
     public void minePath(List<BlockPos> path) {
-        if (path.isEmpty()) return;
+        if (path.isEmpty() || mc.player == null) return;
         
-        for (BlockPos pos : path) {
-            if (!isBlockMined(pos)) {
-                mineBlock(pos);
-                break;
+        // Get the block the player is currently looking at
+        if (mc.crosshairTarget instanceof BlockHitResult) {
+            BlockHitResult hitResult = (BlockHitResult) mc.crosshairTarget;
+            BlockPos lookingAt = hitResult.getBlockPos();
+            
+            // Check if the block we're looking at is in our path
+            for (BlockPos pos : path) {
+                if (pos.equals(lookingAt) && !isBlockMined(pos)) {
+                    mineBlock(pos);
+                    break;
+                }
             }
         }
     }
@@ -52,5 +68,9 @@ public class TunnelMiningManager {
             }
         }
         return true;
+    }
+    
+    public BlockPos getCurrentTarget() {
+        return currentTarget;
     }
 }
