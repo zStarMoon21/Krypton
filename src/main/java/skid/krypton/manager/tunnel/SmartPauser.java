@@ -9,11 +9,8 @@ public class SmartPauser {
     private int nextPauseTimer = 0;
     private boolean isPaused = false;
     
-    // Random timing (10-17 seconds between pauses)
-    private static final int MIN_INTERVAL = 200;  // 10 seconds
-    private static final int MAX_INTERVAL = 340;  // 17 seconds
-    
-    // Pause length (1-5 seconds)
+    private static final int MIN_INTERVAL = 200;
+    private static final int MAX_INTERVAL = 340;
     private static final int MIN_PAUSE = 20;
     private static final int MAX_PAUSE = 100;
     
