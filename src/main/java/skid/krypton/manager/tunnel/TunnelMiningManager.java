@@ -13,6 +13,7 @@ import java.util.List;
 public class TunnelMiningManager {
     private final MinecraftClient mc;
     private BlockPos currentTarget = null;
+    private int breakProgress = 0;
     
     public TunnelMiningManager(MinecraftClient mc) {
         this.mc = mc;
@@ -20,38 +21,32 @@ public class TunnelMiningManager {
     
     public void mineBlock(BlockPos pos) {
         if (pos == null || mc.world == null || mc.player == null) return;
-        if (mc.world.getBlockState(pos).isAir()) return;
-        
-        // Only mine if this is the block we're looking at
-        if (mc.crosshairTarget instanceof BlockHitResult) {
-            BlockHitResult hitResult = (BlockHitResult) mc.crosshairTarget;
-            BlockPos lookingAt = hitResult.getBlockPos();
-            
-            // Only mine if the target block matches what we're looking at
-            if (lookingAt.equals(pos)) {
-                mc.interactionManager.updateBlockBreakingProgress(pos, hitResult.getSide());
-                mc.player.swingHand(Hand.MAIN_HAND);
-                currentTarget = pos;
-            }
+        if (mc.world.getBlockState(pos).isAir()) {
+            currentTarget = null;
+            return;
         }
+        
+        // Always try to mine the target block, even if not looking exactly at it
+        // The player will naturally look at it due to mouse glide
+        Vec3d hitVec = new Vec3d(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+        BlockHitResult hitResult = new BlockHitResult(hitVec, Direction.UP, pos, false);
+        
+        mc.interactionManager.updateBlockBreakingProgress(pos, hitResult.getSide());
+        mc.player.swingHand(Hand.MAIN_HAND);
+        currentTarget = pos;
+        breakProgress++;
     }
     
     public void minePath(List<BlockPos> path) {
         if (path.isEmpty() || mc.player == null) return;
         
-        // Get the block the player is currently looking at
-        if (mc.crosshairTarget instanceof BlockHitResult) {
-            BlockHitResult hitResult = (BlockHitResult) mc.crosshairTarget;
-            BlockPos lookingAt = hitResult.getBlockPos();
-            
-            // Check if the block we're looking at is in our path
-            for (BlockPos pos : path) {
-                if (pos.equals(lookingAt) && !isBlockMined(pos)) {
-                    mineBlock(pos);
-                    break;
-                }
-            }
-        }
+        BlockPos target = path.get(0);
+        
+        // Only mine if we're close enough
+        double distance = mc.player.getBlockPos().getManhattanDistance(target);
+        if (distance > 5) return;
+        
+        mineBlock(target);
     }
     
     public boolean isBlockMined(BlockPos pos) {
