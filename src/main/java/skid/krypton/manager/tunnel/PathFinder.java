@@ -5,17 +5,21 @@ import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import skid.krypton.utils.TunnelUtils;
+import net.minecraft.util.math.Vec3i;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class PathFinder {
     private final MinecraftClient mc;
+    private final HazardAvoidanceManager hazardAvoid;
     private List<BlockPos> currentPath = new ArrayList<>();
     private BlockPos currentTarget;
     private TunnelDirection currentDirection;
-    private HazardAvoidanceManager hazardAvoid;
+    
+    // Path finding settings
+    private static final int MAX_PATH_LENGTH = 20;
+    private static final int TUNNEL_WIDTH = 3;
+    private static final int TUNNEL_HEIGHT = 3;
     
     public PathFinder(MinecraftClient mc, HazardAvoidanceManager hazardAvoid) {
         this.mc = mc;
@@ -30,21 +34,27 @@ public class PathFinder {
         Direction dir = toMinecraftDirection(direction);
         BlockPos startPos = mc.player.getBlockPos();
         
-        // Check for hazards first
+        // First, check for hazards and get safe path if needed
         BlockPos hazard = hazardAvoid.detectHazard();
         if (hazard != null) {
-            return hazardAvoid.findSafePath(hazard, direction);
+            List<BlockPos> safePath = findSafePathAroundHazard(hazard, dir, startPos);
+            if (!safePath.isEmpty()) {
+                this.currentPath = safePath;
+                this.currentTarget = safePath.isEmpty() ? null : safePath.get(0);
+                return safePath;
+            }
         }
         
         // Calculate tunnel path (3x3 tunnel)
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < Math.min(length, MAX_PATH_LENGTH); i++) {
             BlockPos forward = startPos.offset(dir, i + 1);
             
-            // Check if path is blocked by hazard
-            if (isHazardNearby(forward)) {
-                return hazardAvoid.findSafePath(forward, direction);
+            // Check if path is blocked by unbreakable block
+            if (isPathBlocked(forward)) {
+                break;
             }
             
+            // Add all blocks in the 3x3 tunnel face
             for (int x = -1; x <= 1; x++) {
                 for (int y = 0; y <= 2; y++) {
                     BlockPos minePos;
@@ -62,22 +72,54 @@ public class PathFinder {
         }
         
         this.currentPath = path;
-        if (!path.isEmpty()) {
-            this.currentTarget = path.get(0);
-        }
-        
+        this.currentTarget = path.isEmpty() ? null : path.get(0);
         return path;
     }
     
-    private boolean isHazardNearby(BlockPos pos) {
+    private List<BlockPos> findSafePathAroundHazard(BlockPos hazard, Direction dir, BlockPos startPos) {
+        List<BlockPos> safePath = new ArrayList<>();
+        
+        // Try to go up first
+        BlockPos up = startPos.up(2);
+        if (isSafe(up) && isSafe(up.offset(dir, 1)) && isSafe(up.offset(dir, 2))) {
+            safePath.add(up);
+            safePath.add(up.offset(dir, 1));
+            safePath.add(up.offset(dir, 2));
+            safePath.add(startPos.offset(dir, 2));
+            return safePath;
+        }
+        
+        // Try to go around sides
+        Direction[] sides = {dir.rotateYClockwise(), dir.rotateYCounterclockwise()};
+        for (Direction side : sides) {
+            BlockPos sidePos = startPos.offset(side, 2);
+            if (isSafe(sidePos) && isSafe(sidePos.offset(dir, 1)) && isSafe(sidePos.offset(dir, 2))) {
+                safePath.add(sidePos);
+                safePath.add(sidePos.offset(dir, 1));
+                safePath.add(sidePos.offset(dir, 2));
+                safePath.add(startPos.offset(dir, 2));
+                return safePath;
+            }
+        }
+        
+        return safePath;
+    }
+    
+    private boolean isSafe(BlockPos pos) {
+        if (mc.world == null) return false;
+        Block block = mc.world.getBlockState(pos).getBlock();
+        return block == Blocks.AIR || (block != Blocks.LAVA && block != Blocks.WATER && block != Blocks.BEDROCK);
+    }
+    
+    private boolean isPathBlocked(BlockPos pos) {
+        if (mc.world == null) return false;
+        // Check if any block in the tunnel face is unbreakable
         for (int x = -1; x <= 1; x++) {
-            for (int y = -1; y <= 2; y++) {
-                for (int z = -1; z <= 1; z++) {
-                    BlockPos checkPos = pos.add(x, y, z);
-                    Block block = mc.world.getBlockState(checkPos).getBlock();
-                    if (block == Blocks.LAVA || block == Blocks.WATER) {
-                        return true;
-                    }
+            for (int y = 0; y <= 2; y++) {
+                BlockPos checkPos = pos.add(x, y, 0);
+                Block block = mc.world.getBlockState(checkPos).getBlock();
+                if (block == Blocks.BEDROCK) {
+                    return true;
                 }
             }
         }
@@ -92,7 +134,8 @@ public class PathFinder {
                block != Blocks.LAVA && 
                block != Blocks.WATER &&
                block != Blocks.CHEST &&
-               block != Blocks.TRAPPED_CHEST;
+               block != Blocks.TRAPPED_CHEST &&
+               block != Blocks.ENDER_CHEST;
     }
     
     private Direction toMinecraftDirection(TunnelDirection dir) {
@@ -107,16 +150,16 @@ public class PathFinder {
     
     public void updateTarget() {
         if (!currentPath.isEmpty()) {
-            currentTarget = currentPath.get(0);
-        } else {
-            currentTarget = null;
+            // Remove mined blocks from path
+            currentPath.removeIf(pos -> mc.world != null && mc.world.getBlockState(pos).isAir());
+            currentTarget = currentPath.isEmpty() ? null : currentPath.get(0);
         }
     }
     
     public void removeCurrentTarget() {
         if (!currentPath.isEmpty()) {
             currentPath.remove(0);
-            updateTarget();
+            currentTarget = currentPath.isEmpty() ? null : currentPath.get(0);
         }
     }
     
