@@ -1,7 +1,6 @@
 package skid.krypton.manager.tunnel;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
@@ -12,10 +11,8 @@ public class PixelGlideManager {
     private final MinecraftClient mc;
     private final Random random = new Random();
     
-    // Pixel-perfect settings - 1-4 pixels movement
-    private static final float PIXEL_TO_DEGREES = 0.04f; // 1 pixel ≈ 0.04 degrees at 1080p
-    private static final int GLIDE_DURATION = 10; // Ticks
-    private static final float MAX_OFFSET = 4 * PIXEL_TO_DEGREES; // 4 pixels max
+    private static final float MAX_OFFSET = 0.15f; // ~3-4 pixels
+    private static final int GLIDE_DURATION = 10;
     
     private float targetYaw;
     private float targetPitch;
@@ -24,7 +21,7 @@ public class PixelGlideManager {
     private float centerYaw;
     private float centerPitch;
     private int glideTimer = 0;
-    private int glidePhase = 0; // 0: moving away, 1: moving back
+    private int glidePhase = 0;
     private boolean isGliding = false;
     
     public PixelGlideManager(MinecraftClient mc) {
@@ -34,7 +31,6 @@ public class PixelGlideManager {
     public void glideToCenter(BlockPos targetBlock) {
         if (targetBlock == null || mc.player == null) return;
         
-        // Calculate exact center of block
         Vec3d blockCenter = new Vec3d(targetBlock.getX() + 0.5, targetBlock.getY() + 0.5, targetBlock.getZ() + 0.5);
         Vec3d playerPos = mc.player.getEyePos();
         Vec3d direction = blockCenter.subtract(playerPos).normalize();
@@ -42,11 +38,9 @@ public class PixelGlideManager {
         float newCenterPitch = (float) Math.toDegrees(Math.asin(-direction.y));
         float newCenterYaw = (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
         
-        // Normalize yaw
         while (newCenterYaw - mc.player.getYaw() > 180) newCenterYaw -= 360;
         while (newCenterYaw - mc.player.getYaw() < -180) newCenterYaw += 360;
         
-        // If block changed, reset glide
         if (centerYaw != newCenterYaw || centerPitch != newCenterPitch) {
             centerYaw = newCenterYaw;
             centerPitch = newCenterPitch;
@@ -56,18 +50,15 @@ public class PixelGlideManager {
         if (isGliding) {
             performGlide();
         } else {
-            // Ensure we're at center when not gliding
             mc.player.setYaw(centerYaw);
             mc.player.setPitch(centerPitch);
         }
     }
     
     private void startNewGlide() {
-        // Start from current position
         startYaw = mc.player.getYaw();
         startPitch = mc.player.getPitch();
         
-        // Calculate small random offset (1-4 pixels)
         float yawOffset = (random.nextFloat() - 0.5f) * 2 * MAX_OFFSET;
         float pitchOffset = (random.nextFloat() - 0.5f) * 2 * (MAX_OFFSET * 0.7f);
         
@@ -88,17 +79,15 @@ public class PixelGlideManager {
         float progress = 1.0f - ((float) glideTimer / GLIDE_DURATION);
         
         if (glidePhase == 0) {
-            // First half: glide to offset position
             if (progress < 0.5f) {
-                float t = progress * 2; // 0 to 1
+                float t = progress * 2;
                 mc.player.setYaw(MathHelper.lerp(t, startYaw, targetYaw));
                 mc.player.setPitch(MathHelper.lerp(t, startPitch, targetPitch));
             } else {
                 glidePhase = 1;
             }
         } else {
-            // Second half: glide back to center
-            float t = (progress - 0.5f) * 2; // 0 to 1
+            float t = (progress - 0.5f) * 2;
             mc.player.setYaw(MathHelper.lerp(t, targetYaw, centerYaw));
             mc.player.setPitch(MathHelper.lerp(t, targetPitch, centerPitch));
         }
