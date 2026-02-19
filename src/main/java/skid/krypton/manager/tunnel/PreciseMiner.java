@@ -9,7 +9,7 @@ import net.minecraft.util.math.BlockPos;
 public class PreciseMiner {
     private final MinecraftClient mc;
     private BlockPos currentTarget;
-    private int breakProgress = 0;
+    private int miningCooldown = 0;
     
     public PreciseMiner(MinecraftClient mc) {
         this.mc = mc;
@@ -17,6 +17,12 @@ public class PreciseMiner {
     
     public void mine() {
         if (mc.player == null || mc.world == null) return;
+        
+        // Regular mining speed - no speed hacks
+        if (miningCooldown > 0) {
+            miningCooldown--;
+            return;
+        }
         
         // Only mine if looking at a block
         if (mc.crosshairTarget instanceof BlockHitResult) {
@@ -28,15 +34,10 @@ public class PreciseMiner {
                 mc.interactionManager.updateBlockBreakingProgress(lookingAt, hitResult.getSide());
                 mc.player.swingHand(Hand.MAIN_HAND);
                 currentTarget = lookingAt;
-                breakProgress++;
+                miningCooldown = 4; // Small delay between mining attempts (normal speed)
             }
         } else {
-            // Not looking at a block, reset
-            if (mc.interactionManager != null) {
-                mc.interactionManager.cancelBlockBreaking();
-            }
-            breakProgress = 0;
-            currentTarget = null;
+            stopMining();
         }
     }
     
@@ -44,8 +45,8 @@ public class PreciseMiner {
         if (mc.interactionManager != null) {
             mc.interactionManager.cancelBlockBreaking();
         }
-        breakProgress = 0;
         currentTarget = null;
+        miningCooldown = 0;
     }
     
     public boolean isBlockMined(BlockPos pos) {
