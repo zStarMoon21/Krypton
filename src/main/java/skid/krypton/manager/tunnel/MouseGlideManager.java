@@ -13,6 +13,12 @@ public class MouseGlideManager {
     private float targetPitch;
     private int glideTimer = 0;
     private boolean isGliding = false;
+    private float originalYaw;
+    private float originalPitch;
+    
+    // Reduce gliding intensity
+    private static final float MAX_GLIDE_OFFSET = 1.5f; // Reduced from 3.0f
+    private static final int GLIDE_DURATION = 30; // Reduced from 40-60
     
     public MouseGlideManager(MinecraftClient mc) {
         this.mc = mc;
@@ -28,24 +34,46 @@ public class MouseGlideManager {
         float centerPitch = (float) Math.toDegrees(Math.asin(-direction.y));
         float centerYaw = (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
         
+        // Normalize yaw
+        while (centerYaw - mc.player.getYaw() > 180) centerYaw -= 360;
+        while (centerYaw - mc.player.getYaw() < -180) centerYaw += 360;
+        
         if (!isGliding) {
-            this.targetYaw = centerYaw + (random.nextFloat() - 0.5f) * 3.0f;
-            this.targetPitch = centerPitch + (random.nextFloat() - 0.5f) * 2.0f;
-            this.glideTimer = 40 + random.nextInt(60);
+            // Very subtle glide - just tiny movements
+            this.targetYaw = centerYaw + (random.nextFloat() - 0.5f) * MAX_GLIDE_OFFSET;
+            this.targetPitch = centerPitch + (random.nextFloat() - 0.5f) * (MAX_GLIDE_OFFSET * 0.7f);
+            this.glideTimer = GLIDE_DURATION;
             this.isGliding = true;
+            this.originalYaw = mc.player.getYaw();
+            this.originalPitch = mc.player.getPitch();
         }
         
-        if (glideTimer > 20) {
-            mc.player.setYaw(mc.player.getYaw() + (this.targetYaw - mc.player.getYaw()) * 0.05f);
-            mc.player.setPitch(mc.player.getPitch() + (this.targetPitch - mc.player.getPitch()) * 0.05f);
+        if (glideTimer > 0) {
+            // Very smooth, subtle movement
+            float progress = (float) glideTimer / GLIDE_DURATION;
+            
+            if (glideTimer > GLIDE_DURATION / 2) {
+                // First half: move slightly away from center
+                float factor = 1.0f - progress;
+                mc.player.setYaw(originalYaw + (targetYaw - centerYaw) * factor);
+                mc.player.setPitch(originalPitch + (targetPitch - centerPitch) * factor);
+            } else {
+                // Second half: move back to center
+                float factor = 1.0f - (progress * 2.0f);
+                mc.player.setYaw(targetYaw + (centerYaw - targetYaw) * factor);
+                mc.player.setPitch(targetPitch + (centerPitch - targetPitch) * factor);
+            }
+            
+            glideTimer--;
         } else {
-            mc.player.setYaw(mc.player.getYaw() + (centerYaw - mc.player.getYaw()) * 0.1f);
-            mc.player.setPitch(mc.player.getPitch() + (centerPitch - mc.player.getPitch()) * 0.1f);
-        }
-        
-        glideTimer--;
-        if (glideTimer <= 0) {
+            // Ensure we're back at center
+            mc.player.setYaw(centerYaw);
+            mc.player.setPitch(centerPitch);
             isGliding = false;
         }
+    }
+    
+    public boolean isGliding() {
+        return isGliding;
     }
 }
