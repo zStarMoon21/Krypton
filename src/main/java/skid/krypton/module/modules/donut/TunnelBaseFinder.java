@@ -132,13 +132,15 @@ public final class TunnelBaseFinder extends Module {
         this.currentDirection = TunnelUtils.getInitialDirection(this.mc.player);
         this.mcDirection = toMinecraftDirection(currentDirection);
         
-        // Scan initial path
-        this.currentPath = pathScanner.scanPath(currentDirection, 10);
-        this.pathRenderer.updatePath(currentPath);
+        // Scan initial path (20 blocks ahead)
+        this.currentPath = pathScanner.scanPath(currentDirection);
+        this.pathRenderer.setPathScanner(pathScanner);
         
         // Reset all state
         this.blocksMined = 0;
         this.idleTicks = 0;
+        this.spawnerCount = 0;
+        this.storageCount = 0;
         this.isDigging = false;
         this.shouldDig = false;
         this.totemBuyCounter = 0;
@@ -203,7 +205,7 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 4. RANDOM PAUSES - Anti-detection
+        // 4. RANDOM PAUSES - Anti-detection (every 10-17 seconds)
         if (randomPause.shouldPause()) {
             pauseAllActivity();
             return;
@@ -225,25 +227,16 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 8. SCAN FOR HAZARDS AND UPDATE PATH
-        BlockPos hazard = hazardAvoid.detectHazard();
-        if (hazard != null) {
-            // Hazard detected, rescan path
-            currentPath = pathScanner.scanPath(currentDirection, 10);
-            pathRenderer.updatePath(currentPath);
-        }
+        // 8. SCAN FOR PATH (20 blocks ahead, updates automatically)
+        currentPath = pathScanner.scanPath(currentDirection);
 
-        // 9. GET CURRENT PATH AND TARGET
-        currentPath = pathScanner.getCurrentPath();
+        // 9. GET CURRENT TARGET
         BlockPos target = pathScanner.getNextTarget();
-        
-        // Update renderer with current path
-        pathRenderer.updatePath(currentPath);
 
         // 10. UPDATE DIRECTION IF NEEDED
         updateDirection();
 
-        // 11. MINE THE BLOCK WE'RE LOOKING AT
+        // 11. MINE THE BLOCK WE'RE LOOKING AT (normal speed)
         miner.mine();
         
         // Check if target block is mined and remove from path
@@ -251,7 +244,7 @@ public final class TunnelBaseFinder extends Module {
             pathScanner.removeTarget(target);
         }
 
-        // 12. SUBTLE MOUSE GLIDE (center pixel only)
+        // 12. SUBTLE MOUSE GLIDE (center pixel only - 1-4 pixels)
         if (target != null) {
             pixelGlide.update(target);
         }
@@ -270,7 +263,7 @@ public final class TunnelBaseFinder extends Module {
     }
 
     /**
-     * Controls movement along the path
+     * Controls movement along the path - smooth walking
      */
     private void controlMovement() {
         if (this.mc.player == null) return;
@@ -296,31 +289,37 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
         
-        // Move forward
+        // Smooth forward movement (hold W, not tapping)
         this.mc.options.forwardKey.setPressed(true);
         
-        // Center correction - keep player in middle of tunnel
+        // Very subtle centering - only correct when significantly off
         double xDiff = (this.mc.player.getX() % 1) - 0.5;
         double zDiff = (this.mc.player.getZ() % 1) - 0.5;
-        double threshold = 0.3;
+        double threshold = 0.4; // Only correct when more than 0.4 blocks off center
         
-        // Correct X-axis drift
+        // Only apply strafe correction when really needed
+        boolean needsCorrection = false;
+        
         if (Math.abs(xDiff) > threshold) {
+            needsCorrection = true;
             boolean pressRight = xDiff > 0;
             this.mc.options.rightKey.setPressed(pressRight);
             this.mc.options.leftKey.setPressed(!pressRight);
-        } else {
-            this.mc.options.rightKey.setPressed(false);
-            this.mc.options.leftKey.setPressed(false);
         }
         
-        // Correct Z-axis drift (for north/south tunneling)
         if (mcDirection == Direction.NORTH || mcDirection == Direction.SOUTH) {
             if (Math.abs(zDiff) > threshold) {
+                needsCorrection = true;
                 boolean pressRight = zDiff > 0;
                 this.mc.options.rightKey.setPressed(pressRight);
                 this.mc.options.leftKey.setPressed(!pressRight);
             }
+        }
+        
+        // If no correction needed, release strafe keys
+        if (!needsCorrection) {
+            this.mc.options.rightKey.setPressed(false);
+            this.mc.options.leftKey.setPressed(false);
         }
     }
 
