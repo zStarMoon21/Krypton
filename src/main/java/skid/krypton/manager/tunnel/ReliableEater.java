@@ -14,18 +14,16 @@ public class ReliableEater {
     private int eatCooldown = 0;
     private boolean isEating = false;
     
-    // Complete food list
     private static final Set<Item> FOOD_ITEMS = Set.of(
         Items.APPLE, Items.BAKED_POTATO, Items.BEEF, Items.BREAD,
         Items.CARROT, Items.CHICKEN, Items.COOKED_BEEF, Items.COOKED_CHICKEN,
         Items.COOKED_COD, Items.COOKED_MUTTON, Items.COOKED_PORKCHOP,
         Items.COOKED_RABBIT, Items.COOKED_SALMON, Items.COOKIE,
-        Items.DRIED_KELP, Items.ENCHANTED_GOLDEN_APPLE, Items.GOLDEN_APPLE,
-        Items.GOLDEN_CARROT, Items.MELON_SLICE, Items.MUSHROOM_STEW,
-        Items.MUTTON, Items.PORKCHOP, Items.POTATO, Items.PUMPKIN_PIE,
-        Items.RABBIT, Items.RABBIT_STEW, Items.SALMON, Items.SUSPICIOUS_STEW,
-        Items.SWEET_BERRIES, Items.GLOW_BERRIES, Items.CHORUS_FRUIT,
-        Items.HONEY_BOTTLE, Items.COOKED_RABBIT, Items.COOKED_MUTTON
+        Items.DRIED_KELP, Items.GOLDEN_APPLE, Items.GOLDEN_CARROT,
+        Items.MELON_SLICE, Items.MUSHROOM_STEW, Items.MUTTON,
+        Items.PORKCHOP, Items.POTATO, Items.PUMPKIN_PIE, Items.RABBIT,
+        Items.RABBIT_STEW, Items.SALMON, Items.SWEET_BERRIES,
+        Items.GLOW_BERRIES, Items.HONEY_BOTTLE
     );
     
     public ReliableEater(MinecraftClient mc) {
@@ -34,7 +32,7 @@ public class ReliableEater {
     
     public boolean needsFood() {
         if (mc.player == null) return false;
-        return mc.player.getHungerManager().getFoodLevel() <= 16; // 8 drumsticks
+        return mc.player.getHungerManager().getFoodLevel() <= 16;
     }
     
     public void tick() {
@@ -44,7 +42,6 @@ public class ReliableEater {
             eatCooldown--;
         }
         
-        // Check if still eating
         if (mc.player.isUsingItem()) {
             isEating = true;
             return;
@@ -60,7 +57,6 @@ public class ReliableEater {
     private void findAndEat() {
         if (mc.player == null || mc.currentScreen != null) return;
         
-        // Find food in hotbar
         for (int i = 0; i < 9; i++) {
             ItemStack stack = mc.player.getInventory().getStack(i);
             if (!stack.isEmpty() && FOOD_ITEMS.contains(stack.getItem())) {
@@ -69,11 +65,10 @@ public class ReliableEater {
             }
         }
         
-        // Eat if found
         if (foodSlot != -1) {
             mc.player.getInventory().selectedSlot = foodSlot;
             mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
-            eatCooldown = 40; // 2 second cooldown
+            eatCooldown = 40;
             isEating = true;
         }
     }
