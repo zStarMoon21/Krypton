@@ -1,4 +1,4 @@
-package skid.krypton.module.modules.donut.tunnel;
+package skid.krypton.module.modules.donut;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -21,17 +21,17 @@ public class HazardAvoidance {
         
         BlockPos playerPos = mc.player.getBlockPos();
         
-        // Check for lava or water in vicinity
+        // Check for lava or water in vicinity (in 1.21, just use LAVA and WATER)
         for (int x = -2; x <= 2; x++) {
             for (int y = -2; y <= 3; y++) {
                 for (int z = -2; z <= 2; z++) {
                     BlockPos checkPos = playerPos.add(x, y, z);
                     Block block = mc.world.getBlockState(checkPos).getBlock();
                     
-                    if (block == Blocks.LAVA || block == Blocks.FLOWING_LAVA) {
+                    if (block == Blocks.LAVA) {
                         return checkPos;
                     }
-                    if (block == Blocks.WATER || block == Blocks.FLOWING_WATER) {
+                    if (block == Blocks.WATER) {
                         return checkPos;
                     }
                 }
