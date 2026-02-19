@@ -20,7 +20,6 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.Krypton;
@@ -35,7 +34,7 @@ import skid.krypton.module.Module;
 import skid.krypton.module.setting.BooleanSetting;
 import skid.krypton.module.setting.NumberSetting;
 import skid.krypton.module.setting.StringSetting;
-import skid.krypton.module.modules.donut.tunnel.*;
+import skid.krypton.manager.tunnel.*;
 import skid.krypton.utils.BlockUtil;
 import skid.krypton.utils.EnchantmentUtil;
 import skid.krypton.utils.EncryptedString;
@@ -58,7 +57,7 @@ public final class TunnelBaseFinder extends Module {
     private final StringSetting webhook = new StringSetting(EncryptedString.of("Webhook"), "");
     private final BooleanSetting totemCheck = new BooleanSetting(EncryptedString.of("Totem Check"), true);
     
-    // Legacy settings (keeping for compatibility)
+    // Legacy settings
     private final BooleanSetting autoTotemBuy = new BooleanSetting(EncryptedString.of("Auto Totem Buy"), true);
     private final NumberSetting totemSlot = new NumberSetting(EncryptedString.of("Totem Slot"), 1.0, 9.0, 8.0, 1.0);
     private final BooleanSetting autoMend = new BooleanSetting(EncryptedString.of("Auto Mend"), true);
@@ -77,14 +76,14 @@ public final class TunnelBaseFinder extends Module {
     private int totemBuyCounter = 0;
     private double actionDelay = 0.0;
 
-    // Managers
+    // Managers from skid.krypton.manager.tunnel
     private RandomStopManager stopManager;
     private MouseGlideManager mouseGlide;
-    private PlayerDetector playerDetector;
-    private HazardAvoidance hazardAvoid;
+    private PlayerDetectionManager playerDetector;
+    private HazardAvoidanceManager hazardAvoid;
     private AutoEatManager autoEatManager;
-    private TunnelPathFinder pathFinder;
-    private TunnelMiner miner;
+    private TunnelPathManager pathFinder;
+    private TunnelMiningManager miner;
     private List<BlockPos> currentPath = new ArrayList<>();
 
     public TunnelBaseFinder() {
@@ -112,14 +111,14 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
         
-        // Initialize all managers
+        // Initialize all managers from manager.tunnel package
         this.stopManager = new RandomStopManager();
         this.mouseGlide = new MouseGlideManager(this.mc);
-        this.playerDetector = new PlayerDetector(this.mc);
-        this.hazardAvoid = new HazardAvoidance(this.mc);
+        this.playerDetector = new PlayerDetectionManager(this.mc);
+        this.hazardAvoid = new HazardAvoidanceManager(this.mc);
         this.autoEatManager = new AutoEatManager(this.mc);
-        this.pathFinder = new TunnelPathFinder(this.mc);
-        this.miner = new TunnelMiner(this.mc);
+        this.pathFinder = new TunnelPathManager(this.mc);
+        this.miner = new TunnelMiningManager(this.mc);
         
         this.currentDirection = TunnelUtils.getInitialDirection(this.mc.player);
         this.blocksMined = 0;
