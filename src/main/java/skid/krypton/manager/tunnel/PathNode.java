@@ -5,9 +5,9 @@ import net.minecraft.util.math.BlockPos;
 public class PathNode implements Comparable<PathNode> {
     public BlockPos pos;
     public PathNode parent;
-    public double gCost; // Distance from start
-    public double hCost; // Distance to target
-    public double fCost; // Total (g + h)
+    public double gCost;
+    public double hCost;
+    public double fCost;
     
     public PathNode(BlockPos pos) {
         this.pos = pos;
