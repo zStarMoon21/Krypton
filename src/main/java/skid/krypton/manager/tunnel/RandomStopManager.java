@@ -17,13 +17,18 @@ public class RandomStopManager {
             return true;
         }
         
-        if (random.nextInt(1200) == 0) { // ~every 60 seconds
-            stopDuration = 20 + random.nextInt(70); // 1-3.5 seconds
+        // Random stop chance (about every 30-60 seconds)
+        if (random.nextInt(1200) == 0) {
+            stopDuration = 20 + random.nextInt(70); // 1 to 3.5 seconds
             isStopped = true;
             return true;
         }
         
         return false;
+    }
+    
+    public void executeStop() {
+        // Just stop moving - handled in main loop
     }
     
     public boolean isStopped() {
