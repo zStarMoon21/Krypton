@@ -9,52 +9,76 @@ import net.minecraft.util.math.Vec3i;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class PathScanner {
     private final MinecraftClient mc;
     private List<BlockPos> currentPath = new ArrayList<>();
+    private List<BlockPos> hazardList = new ArrayList<>();
     private Direction currentDirection;
+    private BlockPos lastScanPos;
+    private int scanCounter = 0;
     
     // Hazards to avoid
     private static final Block[] HAZARDS = {Blocks.LAVA, Blocks.WATER, Blocks.GRAVEL};
+    private static final int SCAN_DISTANCE = 20;
+    private static final int SCAN_INTERVAL = 20; // Scan every 20 ticks to save performance
     
     public PathScanner(MinecraftClient mc) {
         this.mc = mc;
     }
     
-    public List<BlockPos> scanPath(TunnelDirection tunnelDir, int scanDistance) {
+    public List<BlockPos> scanPath(TunnelDirection tunnelDir) {
         if (mc.player == null) return new ArrayList<>();
         
         currentDirection = toMinecraftDirection(tunnelDir);
-        List<BlockPos> path = new ArrayList<>();
-        BlockPos startPos = mc.player.getBlockPos();
+        BlockPos playerPos = mc.player.getBlockPos();
         
-        // Scan forward block by block
-        for (int i = 1; i <= scanDistance; i++) {
-            BlockPos checkPos = startPos.offset(currentDirection, i);
-            
-            // Check for hazards
-            BlockPos hazard = findHazardNearby(checkPos);
-            if (hazard != null) {
-                // Found hazard, find path around it
-                List<BlockPos> detour = findDetour(hazard, i);
-                if (!detour.isEmpty()) {
-                    path.addAll(detour);
-                }
-                break;
-            }
-            
-            // Add this position to path if it has minable blocks
-            if (hasBlocksToMine(checkPos)) {
-                path.add(checkPos);
-            }
+        // Only scan every SCAN_INTERVAL ticks or if player moved significantly
+        scanCounter++;
+        if (scanCounter < SCAN_INTERVAL && lastScanPos != null && 
+            playerPos.getManhattanDistance(lastScanPos) < 5) {
+            return currentPath;
         }
         
-        currentPath = path;
-        return path;
+        scanCounter = 0;
+        lastScanPos = playerPos;
+        
+        // Clear old hazards
+        hazardList.clear();
+        
+        // Scan forward 20 blocks
+        List<BlockPos> newPath = new ArrayList<>();
+        
+        for (int i = 1; i <= SCAN_DISTANCE; i++) {
+            BlockPos checkPos = playerPos.offset(currentDirection, i);
+            
+            // Check for hazards at this position
+            List<BlockPos> hazards = findHazardsInArea(checkPos);
+            if (!hazards.isEmpty()) {
+                // Add hazards to list for rendering
+                hazardList.addAll(hazards);
+                
+                // Find path around hazards
+                List<BlockPos> detour = findQuickestDetour(checkPos, i);
+                if (!detour.isEmpty()) {
+                    newPath.addAll(detour);
+                    break;
+                }
+            }
+            
+            // Add this position to path
+            newPath.add(checkPos);
+        }
+        
+        currentPath = newPath;
+        return newPath;
     }
     
-    private BlockPos findHazardNearby(BlockPos pos) {
+    private List<BlockPos> findHazardsInArea(BlockPos pos) {
+        List<BlockPos> hazards = new ArrayList<>();
+        
+        // Check 3x3 area around the position
         for (int x = -1; x <= 1; x++) {
             for (int y = -1; y <= 2; y++) {
                 for (int z = -1; z <= 1; z++) {
@@ -63,72 +87,61 @@ public class PathScanner {
                     
                     for (Block hazard : HAZARDS) {
                         if (block == hazard) {
-                            return checkPos;
+                            hazards.add(checkPos);
                         }
                     }
                 }
             }
         }
-        return null;
+        return hazards;
     }
     
-    private boolean hasBlocksToMine(BlockPos pos) {
-        // Check the 3x3 tunnel face
-        for (int x = -1; x <= 1; x++) {
-            for (int y = 0; y <= 2; y++) {
-                BlockPos minePos;
-                if (currentDirection == Direction.NORTH || currentDirection == Direction.SOUTH) {
-                    minePos = pos.add(x, y, 0);
-                } else {
-                    minePos = pos.add(0, y, x);
-                }
-                
-                Block block = mc.world.getBlockState(minePos).getBlock();
-                if (block != Blocks.AIR && 
-                    block != Blocks.BEDROCK && 
-                    block != Blocks.LAVA && 
-                    block != Blocks.WATER) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    
-    private List<BlockPos> findDetour(BlockPos hazardPos, int currentDistance) {
+    private List<BlockPos> findQuickestDetour(BlockPos hazardPos, int currentDistance) {
         List<BlockPos> detour = new ArrayList<>();
         BlockPos playerPos = mc.player.getBlockPos();
         
-        // Try going up first
-        BlockPos up = playerPos.up(2).offset(currentDirection, currentDistance - 1);
+        // Try each possible detour and pick the shortest
+        List<List<BlockPos>> options = new ArrayList<>();
+        
+        // Option 1: Go up
+        List<BlockPos> upPath = new ArrayList<>();
+        BlockPos up = playerPos.up(2);
         if (isPathClear(up, 3)) {
-            detour.add(playerPos.up(2));
-            detour.add(playerPos.up(2).offset(currentDirection, 1));
-            detour.add(playerPos.up(2).offset(currentDirection, 2));
-            detour.add(playerPos.offset(currentDirection, 2));
-            return detour;
+            upPath.add(playerPos.up(2));
+            upPath.add(playerPos.up(2).offset(currentDirection, 1));
+            upPath.add(playerPos.up(2).offset(currentDirection, 2));
+            upPath.add(playerPos.offset(currentDirection, 2));
+            options.add(upPath);
         }
         
-        // Try going left
+        // Option 2: Go left
         Direction left = currentDirection.rotateYCounterclockwise();
-        BlockPos leftPos = playerPos.offset(left, 2).offset(currentDirection, currentDistance - 1);
+        List<BlockPos> leftPath = new ArrayList<>();
+        BlockPos leftPos = playerPos.offset(left, 2);
         if (isPathClear(leftPos, 3)) {
-            detour.add(playerPos.offset(left, 2));
-            detour.add(playerPos.offset(left, 2).offset(currentDirection, 1));
-            detour.add(playerPos.offset(left, 2).offset(currentDirection, 2));
-            detour.add(playerPos.offset(currentDirection, 2));
-            return detour;
+            leftPath.add(playerPos.offset(left, 2));
+            leftPath.add(playerPos.offset(left, 2).offset(currentDirection, 1));
+            leftPath.add(playerPos.offset(left, 2).offset(currentDirection, 2));
+            leftPath.add(playerPos.offset(currentDirection, 2));
+            options.add(leftPath);
         }
         
-        // Try going right
+        // Option 3: Go right
         Direction right = currentDirection.rotateYClockwise();
-        BlockPos rightPos = playerPos.offset(right, 2).offset(currentDirection, currentDistance - 1);
+        List<BlockPos> rightPath = new ArrayList<>();
+        BlockPos rightPos = playerPos.offset(right, 2);
         if (isPathClear(rightPos, 3)) {
-            detour.add(playerPos.offset(right, 2));
-            detour.add(playerPos.offset(right, 2).offset(currentDirection, 1));
-            detour.add(playerPos.offset(right, 2).offset(currentDirection, 2));
-            detour.add(playerPos.offset(currentDirection, 2));
-            return detour;
+            rightPath.add(playerPos.offset(right, 2));
+            rightPath.add(playerPos.offset(right, 2).offset(currentDirection, 1));
+            rightPath.add(playerPos.offset(right, 2).offset(currentDirection, 2));
+            rightPath.add(playerPos.offset(currentDirection, 2));
+            options.add(rightPath);
+        }
+        
+        // Return the shortest path
+        if (!options.isEmpty()) {
+            options.sort((a, b) -> Integer.compare(a.size(), b.size()));
+            return options.get(0);
         }
         
         return detour;
@@ -137,7 +150,7 @@ public class PathScanner {
     private boolean isPathClear(BlockPos start, int length) {
         for (int i = 0; i < length; i++) {
             BlockPos checkPos = start.offset(currentDirection, i);
-            if (findHazardNearby(checkPos) != null) {
+            if (!findHazardsInArea(checkPos).isEmpty()) {
                 return false;
             }
         }
@@ -156,6 +169,10 @@ public class PathScanner {
     
     public List<BlockPos> getCurrentPath() {
         return currentPath;
+    }
+    
+    public List<BlockPos> getHazardList() {
+        return hazardList;
     }
     
     public BlockPos getNextTarget() {
