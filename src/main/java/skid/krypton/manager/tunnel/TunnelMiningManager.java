@@ -27,6 +27,17 @@ public class TunnelMiningManager {
         mc.player.swingHand(Hand.MAIN_HAND);
     }
     
+    public void minePath(List<BlockPos> path) {
+        if (path.isEmpty()) return;
+        
+        for (BlockPos pos : path) {
+            if (!isBlockMined(pos)) {
+                mineBlock(pos);
+                break;
+            }
+        }
+    }
+    
     public boolean isBlockMined(BlockPos pos) {
         if (mc.world == null) return true;
         return mc.world.getBlockState(pos).isAir();
