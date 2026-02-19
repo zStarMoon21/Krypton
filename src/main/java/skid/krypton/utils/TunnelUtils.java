@@ -1,7 +1,9 @@
 package skid.krypton.utils;
 
 import net.minecraft.entity.player.PlayerEntity;
-import skid.krypton.module.modules.donut.tunnel.TunnelDirection;
+import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
+import skid.krypton.module.modules.donut.TunnelDirection;
 
 public class TunnelUtils {
     
@@ -25,10 +27,7 @@ public class TunnelUtils {
         }
     }
     
-    public static boolean isSafeBlock(net.minecraft.block.Block block) {
-        return block != net.minecraft.block.Blocks.LAVA && 
-               block != net.minecraft.block.Blocks.FLOWING_LAVA &&
-               block != net.minecraft.block.Blocks.WATER && 
-               block != net.minecraft.block.Blocks.FLOWING_WATER;
+    public static boolean isSafeBlock(Block block) {
+        return block != Blocks.LAVA && block != Blocks.WATER;
     }
 }
