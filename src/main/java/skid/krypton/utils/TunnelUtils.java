@@ -1,8 +1,6 @@
 package skid.krypton.utils;
 
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
 import skid.krypton.manager.tunnel.TunnelDirection;
 
 public class TunnelUtils {
@@ -18,16 +16,11 @@ public class TunnelUtils {
     }
     
     public static float getDirectionYaw(TunnelDirection dir) {
-        switch(dir) {
-            case NORTH: return 180;
-            case SOUTH: return 0;
-            case EAST: return -90;
-            case WEST: return 90;
-            default: return 0;
-        }
-    }
-    
-    public static boolean isSafeBlock(Block block) {
-        return block != Blocks.LAVA && block != Blocks.WATER;
+        return switch (dir) {
+            case NORTH -> 180;
+            case SOUTH -> 0;
+            case EAST -> -90;
+            case WEST -> 90;
+        };
     }
 }
