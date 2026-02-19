@@ -31,6 +31,7 @@ import skid.krypton.module.setting.BooleanSetting;
 import skid.krypton.module.setting.NumberSetting;
 import skid.krypton.module.setting.StringSetting;
 import skid.krypton.utils.*;
+import skid.krypton.utils.embed.DiscordWebhook; // FIXED: Added explicit import
 
 import java.awt.*;
 import java.time.LocalTime;
@@ -310,8 +311,11 @@ public final class TunnelBaseFinder extends Module {
             embed.addField(field, value, true);
             
             webhook.addEmbed(embed);
-            webhook.a("");
-            webhook.b("Krypton Tunnel Finder");
+            webhook.a(""); // content
+            webhook.b("Krypton Tunnel Finder"); // username
+            webhook.c(""); // avatar URL (optional)
+            webhook.a(false); // tts (optional)
+            
             webhook.execute();
         } catch (Throwable ignored) {}
     }
@@ -326,10 +330,12 @@ public final class TunnelBaseFinder extends Module {
         ItemStack mainHand = mc.player.getMainHandStack();
         if (EnchantmentUtil.hasEnchantment(mainHand, Enchantments.MENDING) && 
             mainHand.getMaxDamage() - mainHand.getDamage() < 100) {
+            // Mending logic would go here
         }
     }
 
     private void handleTotemBuy() {
+        // Legacy totem buy logic would go here
     }
 
     public boolean isDigging() {
