@@ -80,11 +80,11 @@ public final class TunnelBaseFinder extends Module {
 
     // NEW INTEGRATED MANAGERS
     private RandomStopManager stopManager;
-    private PixelGlideManager pixelGlide;  // Replaced MouseGlideManager
+    private PixelGlideManager pixelGlide;
     private PlayerDetectionManager playerDetector;
     private HazardAvoidanceManager hazardAvoid;
     private AutoEatManager autoEatManager;
-    private PathFinder pathFinder;  // Replaced TunnelPathManager
+    private PathFinder pathFinder;
     private TunnelMiningManager miner;
     private PathRenderer pathRenderer;
     private List<BlockPos> currentPath = new ArrayList<>();
@@ -144,10 +144,14 @@ public final class TunnelBaseFinder extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        // Reset all key presses
+        // Reset all key presses and release control
         this.mc.options.leftKey.setPressed(false);
         this.mc.options.rightKey.setPressed(false);
         this.mc.options.forwardKey.setPressed(false);
+        this.mc.options.backKey.setPressed(false);
+        this.mc.options.jumpKey.setPressed(false);
+        this.mc.options.sneakKey.setPressed(false);
+        
         if (this.mc.interactionManager != null) {
             this.mc.interactionManager.cancelBlockBreaking();
             miner.resetMining();
@@ -160,6 +164,12 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
+        // Override player control - module takes over completely
+        this.mc.player.input.movementForward = 0;
+        this.mc.player.input.movementSideways = 0;
+        this.mc.player.input.jumping = false;
+        this.mc.player.input.sneaking = false;
+
         // 1. PLAYER DETECTION (Highest Priority)
         PlayerEntity detected = playerDetector.checkForPlayers(20);
         if (detected != null) {
@@ -167,7 +177,7 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 2. AUTO EAT - Fixed to work without GUI
+        // 2. AUTO EAT
         if (autoEat.getValue() && autoEatManager.shouldEat()) {
             autoEatManager.eat();
             pauseMining();
@@ -243,14 +253,72 @@ public final class TunnelBaseFinder extends Module {
         // 12. BASE/SPAWNER DETECTION
         checkForDiscoveries();
         
-        // 13. HANDLE MOVEMENT
-        handleMovement();
+        // 13. CONTROL MOVEMENT (module takes over)
+        controlMovement();
+        
+        // 14. Update path finder
+        pathFinder.updateTarget();
     }
 
     @EventListener
     public void onRender3D(final Render3DEvent event) {
         if (!this.isEnabled() || pathRenderer == null) return;
         pathRenderer.render(event.matrixStack, event.tickDelta);
+    }
+
+    /**
+     * Controls player movement - module takes full control
+     */
+    private void controlMovement() {
+        if (this.mc.player == null) return;
+        
+        // Check if we should move forward
+        boolean shouldMove = !stopManager.isStopped() 
+            && !(autoEat.getValue() && autoEatManager.shouldEat())
+            && !currentPath.isEmpty()
+            && hazardAvoid.detectHazard() == null
+            && pathFinder.getCurrentTarget() != null
+            && !pixelGlide.isGliding();
+        
+        if (shouldMove) {
+            // Move forward
+            this.mc.options.forwardKey.setPressed(true);
+            
+            // Small strafe correction to stay centered in tunnel
+            double xDiff = (this.mc.player.getX() % 1) - 0.5;
+            double zDiff = (this.mc.player.getZ() % 1) - 0.5;
+            
+            // Correct for X-axis drift
+            if (Math.abs(xDiff) > 0.3) {
+                if (xDiff > 0) {
+                    this.mc.options.rightKey.setPressed(true);
+                    this.mc.options.leftKey.setPressed(false);
+                } else {
+                    this.mc.options.rightKey.setPressed(false);
+                    this.mc.options.leftKey.setPressed(true);
+                }
+            } else {
+                this.mc.options.rightKey.setPressed(false);
+                this.mc.options.leftKey.setPressed(false);
+            }
+            
+            // Correct for Z-axis drift
+            if (Math.abs(zDiff) > 0.3) {
+                if (zDiff > 0) {
+                    this.mc.options.rightKey.setPressed(true);
+                    this.mc.options.leftKey.setPressed(false);
+                } else {
+                    this.mc.options.rightKey.setPressed(false);
+                    this.mc.options.leftKey.setPressed(true);
+                }
+            }
+        } else {
+            // Stop all movement
+            this.mc.options.forwardKey.setPressed(false);
+            this.mc.options.rightKey.setPressed(false);
+            this.mc.options.leftKey.setPressed(false);
+            this.mc.options.backKey.setPressed(false);
+        }
     }
 
     private void handlePlayerDetected(PlayerEntity player) {
@@ -268,29 +336,6 @@ public final class TunnelBaseFinder extends Module {
             this.mc.interactionManager.cancelBlockBreaking();
             miner.resetMining();
         }
-    }
-
-    private void handleMovement() {
-        if (this.mc.player == null) return;
-        
-        // Don't walk if we're eating or in a random stop
-        if (stopManager.isStopped() || (autoEat.getValue() && autoEatManager.shouldEat())) {
-            this.mc.options.forwardKey.setPressed(false);
-            return;
-        }
-        
-        // Don't walk if there's a hazard
-        if (hazardAvoid.detectHazard() != null) {
-            this.mc.options.forwardKey.setPressed(false);
-            return;
-        }
-        
-        // Walk if we have a path and are facing the right direction
-        boolean shouldWalk = !currentPath.isEmpty() && 
-                            Math.abs(TunnelUtils.getDirectionYaw(currentDirection) - this.mc.player.getYaw()) < 30 &&
-                            !pixelGlide.isGliding(); // Don't walk while gliding
-        
-        this.mc.options.forwardKey.setPressed(shouldWalk);
     }
 
     private boolean handleTotemSafety() {
@@ -442,7 +487,7 @@ public final class TunnelBaseFinder extends Module {
         float currentYaw = this.mc.player.getYaw();
         
         float diff = targetYaw - currentYaw;
-        if (Math.abs(diff) > 1 && !pixelGlide.isGliding()) { // Don't interfere with gliding
+        if (Math.abs(diff) > 1 && !pixelGlide.isGliding()) {
             this.mc.player.setYaw(currentYaw + diff * 0.1f);
         }
         this.mc.player.setPitch(2.0f);
