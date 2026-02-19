@@ -78,15 +78,15 @@ public final class TunnelBaseFinder extends Module {
     private int totemBuyCounter = 0;
     private double actionDelay = 0.0;
 
-    // Managers from skid.krypton.manager.tunnel
+    // NEW INTEGRATED MANAGERS
     private RandomStopManager stopManager;
-    private MouseGlideManager mouseGlide;
+    private PixelGlideManager pixelGlide;  // Replaced MouseGlideManager
     private PlayerDetectionManager playerDetector;
     private HazardAvoidanceManager hazardAvoid;
     private AutoEatManager autoEatManager;
-    private TunnelPathManager pathFinder;
+    private PathFinder pathFinder;  // Replaced TunnelPathManager
     private TunnelMiningManager miner;
-    private PathRenderer pathRenderer; // New PathRenderer
+    private PathRenderer pathRenderer;
     private List<BlockPos> currentPath = new ArrayList<>();
 
     public TunnelBaseFinder() {
@@ -114,22 +114,25 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
         
-        // Initialize all managers from manager.tunnel package
+        // Initialize all managers
         this.stopManager = new RandomStopManager();
-        this.mouseGlide = new MouseGlideManager(this.mc);
         this.playerDetector = new PlayerDetectionManager(this.mc);
         this.hazardAvoid = new HazardAvoidanceManager(this.mc);
         this.autoEatManager = new AutoEatManager(this.mc);
-        this.pathFinder = new TunnelPathManager(this.mc);
+        
+        // NEW INTEGRATED SYSTEM
+        this.pathFinder = new PathFinder(this.mc, this.hazardAvoid);
+        this.pixelGlide = new PixelGlideManager(this.mc);
         this.miner = new TunnelMiningManager(this.mc);
-        this.pathRenderer = new PathRenderer(this.mc); // Initialize PathRenderer
+        this.pathRenderer = new PathRenderer(this.mc);
+        this.pathRenderer.setPathFinder(this.pathFinder);
         
         this.currentDirection = TunnelUtils.getInitialDirection(this.mc.player);
         this.blocksMined = 0;
         this.idleTicks = 0;
         this.spawnerCount = 0;
         this.lastPosition = null;
-        this.currentPath.clear();
+        this.currentPath = pathFinder.findPath(currentDirection, 5);
         this.isDigging = false;
         this.shouldDig = false;
         this.totemBuyCounter = 0;
@@ -147,6 +150,7 @@ public final class TunnelBaseFinder extends Module {
         this.mc.options.forwardKey.setPressed(false);
         if (this.mc.interactionManager != null) {
             this.mc.interactionManager.cancelBlockBreaking();
+            miner.resetMining();
         }
     }
 
@@ -163,7 +167,7 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 2. AUTO EAT
+        // 2. AUTO EAT - Fixed to work without GUI
         if (autoEat.getValue() && autoEatManager.shouldEat()) {
             autoEatManager.eat();
             pauseMining();
@@ -198,38 +202,38 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
-        // 8. HAZARD AVOIDANCE
+        // 8. HAZARD DETECTION & PATH UPDATING
         BlockPos hazard = hazardAvoid.detectHazard();
-        pathRenderer.setHazard(hazard); // Update hazard for rendering
-        
-        if (hazard != null) {
-            currentPath = hazardAvoid.findSafePath(hazard, currentDirection);
-            pathRenderer.setPath(currentPath); // Update path for rendering
-            miner.minePath(currentPath);
-            handleMovement();
-            return;
-        }
+        pathRenderer.setHazard(hazard);
 
-        // 9. PATH FINDING
-        if (currentPath.isEmpty() || miner.isPathFinished(currentPath)) {
+        // Get current path from pathFinder
+        currentPath = pathFinder.getCurrentPath();
+
+        // 9. PATH FINDING (if needed)
+        if (currentPath.isEmpty() || pathFinder.isPathFinished()) {
             currentPath = pathFinder.findPath(currentDirection, 5);
-            pathRenderer.setPath(currentPath); // Update path for rendering
         }
 
-        // 10. MINING WITH MOUSE GLIDE
+        // 10. MINING WITH PIXEL GLIDE
         if (!currentPath.isEmpty()) {
-            BlockPos target = currentPath.get(0);
+            BlockPos target = pathFinder.getCurrentTarget();
             
-            // Only try to mine if we're close enough
-            double distance = this.mc.player.getBlockPos().getManhattanDistance(target);
-            if (distance <= 5) {
-                mouseGlide.glideToBlock(target);
-                miner.mineBlock(target);
-            }
-            
-            if (miner.isBlockMined(target)) {
-                currentPath.remove(0);
-                pathRenderer.setPath(currentPath); // Update path after removal
+            if (target != null) {
+                double distance = this.mc.player.getBlockPos().getManhattanDistance(target);
+                
+                // Only try to mine if we're close enough
+                if (distance <= 5) {
+                    // Pixel-perfect gliding to target
+                    pixelGlide.glideToCenter(target);
+                    
+                    // Mine only what's in crosshair
+                    miner.mineTarget(target);
+                    
+                    // Check if block is mined
+                    if (miner.isBlockMined(target)) {
+                        pathFinder.removeCurrentTarget();
+                    }
+                }
             }
         }
 
@@ -260,7 +264,10 @@ public final class TunnelBaseFinder extends Module {
 
     private void pauseMining() {
         this.mc.options.forwardKey.setPressed(false);
-        this.mc.interactionManager.cancelBlockBreaking();
+        if (this.mc.interactionManager != null) {
+            this.mc.interactionManager.cancelBlockBreaking();
+            miner.resetMining();
+        }
     }
 
     private void handleMovement() {
@@ -280,7 +287,8 @@ public final class TunnelBaseFinder extends Module {
         
         // Walk if we have a path and are facing the right direction
         boolean shouldWalk = !currentPath.isEmpty() && 
-                            Math.abs(TunnelUtils.getDirectionYaw(currentDirection) - this.mc.player.getYaw()) < 30;
+                            Math.abs(TunnelUtils.getDirectionYaw(currentDirection) - this.mc.player.getYaw()) < 30 &&
+                            !pixelGlide.isGliding(); // Don't walk while gliding
         
         this.mc.options.forwardKey.setPressed(shouldWalk);
     }
@@ -434,7 +442,7 @@ public final class TunnelBaseFinder extends Module {
         float currentYaw = this.mc.player.getYaw();
         
         float diff = targetYaw - currentYaw;
-        if (Math.abs(diff) > 1) {
+        if (Math.abs(diff) > 1 && !pixelGlide.isGliding()) { // Don't interfere with gliding
             this.mc.player.setYaw(currentYaw + diff * 0.1f);
         }
         this.mc.player.setPitch(2.0f);
