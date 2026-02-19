@@ -61,26 +61,20 @@ public final class TunnelBaseFinder extends Module {
     private TunnelDirection currentDirection;
     private Direction mcDirection;
 
-    // Tunnel components
-    private PathScanner pathScanner;
+    // New Components
+    private AStarPathfinder pathfinder;
     private PathRenderer pathRenderer;
-    private PreciseMiner miner;
-    private PixelGlide pixelGlide;
-    private RandomPause randomPause;
-    private FoodEater foodEater;
+    private SmartMiner miner;
+    private NaturalMovement movement;
+    private SmartPauser pauser;
+    private ReliableEater eater;
     private PlayerDetectionManager playerDetector;
     private HazardAvoidanceManager hazardAvoid;
 
     private List<BlockPos> currentPath = new ArrayList<>();
-
-    // State
-    private int pathScanCooldown = 0;
+    private boolean mining = false;
+    private int pathUpdateCooldown = 0;
     private int discoveryCooldown = 0;
-    private boolean waitingForBlockBreak = false;
-    private double actionDelay = 0;
-    
-    // FIX 1: Add digging flag for AutoTotem compatibility
-    private boolean digging = false;
 
     public TunnelBaseFinder() {
         super("Tunnel Base Finder", "Advanced tunnel finder", -1, Category.DONUT);
@@ -95,27 +89,31 @@ public final class TunnelBaseFinder extends Module {
             return;
         }
 
+        // Initialize components
         playerDetector = new PlayerDetectionManager(mc);
         hazardAvoid = new HazardAvoidanceManager(mc);
-        pathScanner = new PathScanner(mc);
+        pathfinder = new AStarPathfinder(mc);
         pathRenderer = new PathRenderer(mc);
-        miner = new PreciseMiner(mc);
-        pixelGlide = new PixelGlide(mc);
-        randomPause = new RandomPause();
-        foodEater = new FoodEater(mc);
+        miner = new SmartMiner(mc);
+        movement = new NaturalMovement(mc);
+        pauser = new SmartPauser();
+        eater = new ReliableEater(mc);
+
+        pathRenderer.setPathfinder(pathfinder);
 
         currentDirection = TunnelUtils.getInitialDirection(mc.player);
         mcDirection = toMinecraftDirection(currentDirection);
 
-        currentPath = pathScanner.scanPath(currentDirection);
-        pathRenderer.setPathScanner(pathScanner);
+        // Initial path scan
+        currentPath = pathfinder.findPath(currentDirection);
 
         super.onEnable();
     }
 
     @Override
     public void onDisable() {
-        stopMovement();
+        // Stop everything
+        movement.stopAll();
         if (mc.interactionManager != null) {
             mc.interactionManager.cancelBlockBreaking();
         }
@@ -123,7 +121,6 @@ public final class TunnelBaseFinder extends Module {
         super.onDisable();
     }
 
-    // ================= TICK LOOP =================
     @EventListener
     public void onTick(TickEvent e) {
         if (mc.player == null || mc.world == null) return;
@@ -134,76 +131,69 @@ public final class TunnelBaseFinder extends Module {
         mc.player.input.jumping = false;
         mc.player.input.sneaking = false;
 
-        // Player detection
+        // 1. Player detection
         PlayerEntity detected = playerDetector.checkForPlayers(20);
         if (detected != null) {
             disconnectWithMessage(Text.of("Player detected"));
             return;
         }
 
-        // Totem safety
+        // 2. Auto eat (pauses everything)
+        if (autoEat.getValue()) {
+            eater.tick();
+            if (eater.isEating()) {
+                pauseAll();
+                return;
+            }
+        }
+
+        // 3. Random pauses
+        if (pauser.shouldPause()) {
+            pauseAll();
+            return;
+        }
+
+        // 4. Totem safety
         if (!handleTotemSafety()) return;
 
-        // Auto eat
-        if (autoEat.getValue() && foodEater.needsFood()) {
-            foodEater.eat();
-            pauseAll();
-            return;
+        // 5. Update path every 10 ticks
+        if (--pathUpdateCooldown <= 0) {
+            currentPath = pathfinder.findPath(currentDirection);
+            pathUpdateCooldown = 10;
         }
 
-        // Random pauses
-        if (randomPause.shouldPause()) {
-            pauseAll();
-            return;
-        }
+        BlockPos target = pathfinder.getFirstTarget();
 
-        // Re-scan path every 10 ticks
-        if (--pathScanCooldown <= 0) {
-            currentPath = pathScanner.scanPath(currentDirection);
-            pathScanCooldown = 10;
-        }
-
-        // FIX 2: Use getFirstTarget() instead of getNextTarget()
-        BlockPos target = pathScanner.getFirstTarget();
-
-        updateDirection();
-
-        // Hazard avoidance hook (optional future detour logic)
-        BlockPos hazard = hazardAvoid.detectHazard();
-        if (hazard != null) {
-            stopMovement();
-            return;
-        }
-
-        // Mining sync
+        // 6. Update aim
         if (target != null) {
+            movement.updateAim(target);
+        }
+
+        // 7. Mining
+        if (target != null && isPlayerFacingTarget(target)) {
             miner.mine();
-            // FIX 3: Set digging flag for AutoTotem
-            digging = true;
+            mining = true;
             
             if (miner.isBlockMined(target)) {
-                // FIX 4: Use removeFirstTarget() instead of removeTarget()
-                pathScanner.removeFirstTarget();
-                waitingForBlockBreak = false;
-            } else {
-                waitingForBlockBreak = true;
+                pathfinder.removeFirstTarget();
+                mining = false;
             }
         } else {
-            digging = false;
+            miner.stopMining();
+            mining = false;
         }
 
-        // Pixel glide aim
-        if (target != null) pixelGlide.update(target);
+        // 8. Movement
+        updateMovement(target);
 
-        // Movement only if block broken
-        if (!waitingForBlockBreak) controlMovement();
-        else stopMovement();
-
-        // Base scanning every 40 ticks
+        // 9. Base discovery (every 40 ticks)
         if (--discoveryCooldown <= 0) {
             checkForDiscoveries();
             discoveryCooldown = 40;
         }
+
+        // 10. Legacy features
+        handleLegacyFeatures();
     }
 
     @EventListener
@@ -213,64 +203,61 @@ public final class TunnelBaseFinder extends Module {
         }
     }
 
-    // ================= MOVEMENT =================
-    private void controlMovement() {
-        if (currentPath.isEmpty()) return;
+    private void updateMovement(BlockPos target) {
+        if (target == null || pauser.isPaused() || eater.isEating()) {
+            movement.stopAll();
+            return;
+        }
 
-        mc.options.forwardKey.setPressed(true);
-
+        // Check if we need to strafe (off-center)
+        boolean needsStrafe = false;
+        float strafeDirection = 0;
+        
         double xDiff = (mc.player.getX() % 1) - 0.5;
         double zDiff = (mc.player.getZ() % 1) - 0.5;
-        double threshold = 0.4;
+        double threshold = 0.35;
 
-        boolean correct = false;
-
-        // Only correct the axis we're tunneling in
         if (mcDirection.getAxis() == Direction.Axis.X) {
             if (Math.abs(zDiff) > threshold) {
-                correct = true;
-                mc.options.rightKey.setPressed(zDiff > 0);
-                mc.options.leftKey.setPressed(zDiff < 0);
+                needsStrafe = true;
+                strafeDirection = zDiff > 0 ? 1 : -1;
             }
-        } else { // Z axis
+        } else {
             if (Math.abs(xDiff) > threshold) {
-                correct = true;
-                mc.options.rightKey.setPressed(xDiff > 0);
-                mc.options.leftKey.setPressed(xDiff < 0);
+                needsStrafe = true;
+                strafeDirection = xDiff > 0 ? -1 : 1; // Inverted for correct strafe
             }
         }
 
-        if (!correct) {
-            mc.options.rightKey.setPressed(false);
-            mc.options.leftKey.setPressed(false);
-        }
+        movement.updateMovement(!miner.isBlockMined(target), needsStrafe, strafeDirection);
     }
 
-    private void stopMovement() {
-        mc.options.forwardKey.setPressed(false);
-        mc.options.rightKey.setPressed(false);
-        mc.options.leftKey.setPressed(false);
+    private boolean isPlayerFacingTarget(BlockPos target) {
+        if (target == null) return false;
+        
+        Vec3d lookVec = mc.player.getRotationVec(1.0f);
+        Vec3d targetVec = new Vec3d(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5)
+                .subtract(mc.player.getEyePos()).normalize();
+        
+        double dot = lookVec.dotProduct(targetVec);
+        return dot > 0.95; // ~18 degrees threshold
     }
 
     private void pauseAll() {
-        stopMovement();
+        movement.stopAll();
         miner.stopMining();
     }
 
-    // ================= ROTATION =================
-    private void updateDirection() {
-        // FIX 5: Comment out isGliding check or add it to PixelGlide
-        // if (pixelGlide.isGliding()) return;
-
-        float targetYaw = TunnelUtils.getDirectionYaw(currentDirection);
-        float yaw = mc.player.getYaw();
-        float diff = MathHelper.wrapDegrees(targetYaw - yaw);
-
-        if (Math.abs(diff) > 2f) {
-            mc.player.setYaw(yaw + diff * 0.05f);
+    private void handleLegacyFeatures() {
+        // Auto mend
+        if (autoMend.getValue() && !mining) {
+            checkMending();
         }
-
-        mc.player.setPitch(1.5f);
+        
+        // Auto totem buy
+        if (autoTotemBuy.getValue()) {
+            handleTotemBuy();
+        }
     }
 
     private Direction toMinecraftDirection(TunnelDirection d) {
@@ -282,27 +269,19 @@ public final class TunnelBaseFinder extends Module {
         };
     }
 
-    // ================= SAFETY =================
     private boolean handleTotemSafety() {
         if (!totemCheck.getValue()) return true;
 
         boolean hasTotem = mc.player.getOffHandStack().isOf(Items.TOTEM_OF_UNDYING);
         Module autoTotem = Krypton.INSTANCE.MODULE_MANAGER.getModuleByClass(AutoTotem.class);
 
-        if (!hasTotem) {
-            if (autoTotem.isEnabled()) actionDelay = 0;
-            else actionDelay++;
-
-            if (actionDelay > totemCheckTime.getValue()) {
-                toggle();
-                return false;
-            }
-        } else actionDelay = 0;
-
+        if (!hasTotem && (!autoTotem.isEnabled() || ((AutoTotem) autoTotem).findItemSlot(Items.TOTEM_OF_UNDYING) == -1)) {
+            toggle();
+            return false;
+        }
         return true;
     }
 
-    // ================= BASE DETECTION =================
     private void checkForDiscoveries() {
         int storage = 0;
         BlockPos spawnerPos = null;
@@ -327,19 +306,59 @@ public final class TunnelBaseFinder extends Module {
             }
         }
 
-        if (spawnerPos != null) disconnectWithMessage(Text.of("Spawner Found"));
-        if (storage >= minimumStorage.getIntValue()) disconnectWithMessage(Text.of("Base Found"));
+        if (spawnerPos != null) {
+            sendDiscordNotification("Spawner Found", "Location: " + spawnerPos.toShortString(), "Spawner", spawnerPos.toShortString(), Color.ORANGE);
+            if (disconnectOnBase.getValue()) disconnectWithMessage(Text.of("Spawner Found"));
+        }
+        
+        if (storage >= minimumStorage.getIntValue()) {
+            sendDiscordNotification("Base Found", "Storage: " + storage, "Base", mc.player.getBlockPos().toShortString(), Color.GREEN);
+            if (disconnectOnBase.getValue()) disconnectWithMessage(Text.of("Base Found"));
+        }
     }
 
-    // ================= DISCONNECT =================
+    private void sendDiscordNotification(String title, String desc, String field, String value, Color color) {
+        if (!discordNotification.getValue() || webhook.value.isEmpty()) return;
+        
+        try {
+            DiscordWebhook webhook = new DiscordWebhook(this.webhook.value);
+            DiscordWebhook.EmbedObject embed = new DiscordWebhook.EmbedObject();
+            
+            embed.setTitle(title);
+            embed.setThumbnail("https://render.crafty.gg/3d/bust/" + 
+                MinecraftClient.getInstance().getSession().getUuidOrNull() + "?format=webp");
+            embed.setDescription(desc);
+            embed.setColor(color);
+            embed.setFooter(LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")), null);
+            embed.addField(field, value, true);
+            
+            webhook.addEmbed(embed);
+            webhook.a("");
+            webhook.b("Krypton Tunnel Finder");
+            webhook.execute();
+        } catch (Throwable ignored) {}
+    }
+
     private void disconnectWithMessage(Text t) {
         MutableText m = Text.literal("[TunnelBaseFinder] ").append(t);
         toggle();
         mc.player.networkHandler.onDisconnect(new DisconnectS2CPacket(m));
     }
-    
-    // FIX 6: Add isDigging() method for AutoTotem compatibility
+
+    // Legacy methods
+    private void checkMending() {
+        ItemStack mainHand = mc.player.getMainHandStack();
+        if (EnchantmentUtil.hasEnchantment(mainHand, Enchantments.MENDING) && 
+            mainHand.getMaxDamage() - mainHand.getDamage() < 100) {
+            // Mending logic here
+        }
+    }
+
+    private void handleTotemBuy() {
+        // Legacy totem buy logic
+    }
+
     public boolean isDigging() {
-        return digging;
+        return mining;
     }
 }
