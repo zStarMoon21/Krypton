@@ -1,4 +1,4 @@
-package skid.krypton.module.modules.donut.tunnel;
+package skid.krypton.module.modules.donut;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.item.ItemStack;
@@ -27,10 +27,10 @@ public class AutoEatManager {
         
         if (mc.player == null) return;
         
-        // Find food in hotbar
+        // Find food in hotbar - use getFoodComponent() instead of isFood()
         for (int i = 0; i < 9; i++) {
             ItemStack stack = mc.player.getInventory().getStack(i);
-            if (stack.getItem().isFood()) {
+            if (stack.getItem().getFoodComponent() != null) {
                 mc.player.getInventory().selectedSlot = i;
                 mc.interactionManager.interactItem(mc.player, Hand.MAIN_HAND);
                 eatTimer = 30; // 1.5 second cooldown between eats
