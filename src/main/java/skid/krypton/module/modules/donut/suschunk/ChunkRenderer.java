@@ -13,12 +13,12 @@ public class ChunkRenderer {
 
     private final MinecraftClient mc;
 
-    // Bright, impossible-to-miss colors
-    private static final Color CHUNK_COLOR = new Color(0, 255, 0, 100);
-    private static final Color BORDER_COLOR = new Color(255, 255, 255, 255);
+    // Soft bright green - like shader debug overlays
+    private static final Color FILL_COLOR = new Color(120, 255, 120, 70);
+    private static final Color BORDER_COLOR = new Color(100, 230, 100, 180);
 
-    private static final double THICKNESS = 1.0;
     private static final double RENDER_HEIGHT = 60.0;
+    private static final double THICKNESS = 0.1;
 
     public ChunkRenderer(MinecraftClient mc) {
         this.mc = mc;
@@ -27,41 +27,31 @@ public class ChunkRenderer {
     public void renderChunkHighlight(MatrixStack matrices, ChunkPos chunkPos) {
         if (mc.world == null || mc.player == null) return;
 
-        // Save matrix state
         matrices.push();
-        
-        // Get camera position and translate (this is crucial for 3D rendering)
+
         Vec3d cameraPos = mc.gameRenderer.getCamera().getPos();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
-        // Calculate chunk boundaries
         double minX = chunkPos.getStartX();
         double minZ = chunkPos.getStartZ();
         double maxX = chunkPos.getEndX() + 1;
         double maxZ = chunkPos.getEndZ() + 1;
 
-        // Create the highlight box
         Box box = new Box(minX, RENDER_HEIGHT, minZ, maxX, RENDER_HEIGHT + THICKNESS, maxZ);
 
-        // Render the box
-        renderBox(matrices, box);
-        
-        // Restore matrix state
-        matrices.pop();
-    }
-
-    private void renderBox(MatrixStack matrices, Box box) {
-        // Render the transparent fill
+        // Render fill
         RenderUtils.renderFilledBox(matrices,
                 (float) box.minX, (float) box.minY, (float) box.minZ,
                 (float) box.maxX, (float) box.maxY, (float) box.maxZ,
-                CHUNK_COLOR);
+                FILL_COLOR);
 
-        // Render all edges
-        renderEdges(matrices, box);
+        // Render borders
+        renderBoxBorders(matrices, box);
+
+        matrices.pop();
     }
 
-    private void renderEdges(MatrixStack matrices, Box box) {
+    private void renderBoxBorders(MatrixStack matrices, Box box) {
         // Bottom edges
         renderLine(matrices, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ);
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ);
