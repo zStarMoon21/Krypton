@@ -12,6 +12,7 @@ import skid.krypton.utils.EncryptedString;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class SusChunkFinder extends Module {
 
@@ -30,7 +31,7 @@ public final class SusChunkFinder extends Module {
     private final Queue<ChunkPos> pendingScans = new ConcurrentLinkedQueue<>();
 
     // Threshold
-    private static final int SUSPICION_THRESHOLD = 60; // Increased to 60
+    private static final int SUSPICION_THRESHOLD = 60;
 
     // Performance
     private int cleanupCooldown = 0;
@@ -84,7 +85,7 @@ public final class SusChunkFinder extends Module {
         // Clean up distant chunks every 5 seconds
         if (--cleanupCooldown <= 0) {
             cleanupDistantChunks();
-            cleanupCooldown = 100; // 5 seconds
+            cleanupCooldown = 100;
         }
     }
 
@@ -128,21 +129,21 @@ public final class SusChunkFinder extends Module {
 
         int score = 0;
 
-        // 1. Growth detection (fast)
+        // 1. Growth detection
         score += growthDetector.scanChunk(chunk, data);
 
-        // 2. Kelp gap detection (fast for ocean chunks)
+        // 2. Kelp gap detection
         if (kelpGapDetector.isOceanChunk(chunk)) {
             score += kelpGapDetector.scanForKelpGaps(chunk, data);
         }
 
-        // 3. Underground light detection (fast)
+        // 3. Underground light detection
         score += lightDetector.scanForLightPatterns(chunk, data);
 
-        // 4. Pillar detection (fast)
+        // 4. Pillar detection
         score += pillarDetector.scanForPillars(chunk, data);
 
-        // 5. Uptime score (instant)
+        // 5. Uptime score
         score += uptimeTracker.calculateUptimeScore(data);
 
         data.setTotalScore(score);
