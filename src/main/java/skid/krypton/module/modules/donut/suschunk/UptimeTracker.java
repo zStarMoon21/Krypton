@@ -7,29 +7,12 @@ public class UptimeTracker {
     }
 
     public int calculateUptimeScore(ChunkData data) {
-        long loadTime = data.getLoadTime(); // in milliseconds
+        long minutesLoaded = data.getLoadTime() / (60 * 1000);
         int timesSeen = data.getTimesSeen();
 
-        // Convert to minutes
-        long minutesLoaded = loadTime / (60 * 1000);
-
-        int score = 0;
-
-        // Loaded ≥ 10 minutes total
-        if (minutesLoaded >= 10) {
-            score += 5;
-        }
-
-        // Seen across sessions (timesSeen > 1 implies different sessions)
-        if (timesSeen > 1) {
-            score += 10;
-        }
-
-        // Always loaded (loaded for a long time)
-        if (minutesLoaded >= 30) {
-            score += 15;
-        }
-
-        return score;
+        if (minutesLoaded >= 30) return 20;
+        if (timesSeen > 1) return 10;
+        if (minutesLoaded >= 10) return 5;
+        return 0;
     }
 }
