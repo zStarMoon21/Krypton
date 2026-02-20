@@ -1,6 +1,5 @@
 package skid.krypton.module.modules.donut;
 
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.event.EventListener;
@@ -10,7 +9,6 @@ import skid.krypton.module.Category;
 import skid.krypton.module.Module;
 import skid.krypton.module.modules.donut.suschunk.*;
 import skid.krypton.module.setting.BooleanSetting;
-import skid.krypton.module.setting.NumberSetting;
 import skid.krypton.utils.EncryptedString;
 
 import java.util.*;
@@ -18,10 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class SusChunkFinder extends Module {
 
-    // Settings
-    private final BooleanSetting renderChunks = new BooleanSetting("Render", true);
-    private final NumberSetting threshold = new NumberSetting("Threshold", 10, 50, 26, 1);
-    private final NumberSetting scanInterval = new NumberSetting("Scan Interval", 10, 200, 40, 10);
+    // Only one setting - threshold is now fixed at 30
+    private final BooleanSetting debug = new BooleanSetting("Debug", false);
 
     // Detection components
     private GrowthDetector growthDetector;
@@ -34,17 +30,19 @@ public final class SusChunkFinder extends Module {
     // Chunk data storage
     private final Map<ChunkPos, ChunkData> chunkDataMap = new ConcurrentHashMap<>();
     private final Set<ChunkPos> suspiciousChunks = ConcurrentHashMap.newKeySet();
-    private final Set<ChunkPos> scannedChunks = ConcurrentHashMap.newKeySet(); // Track scanned chunks
+    private final Set<ChunkPos> scannedChunks = ConcurrentHashMap.newKeySet();
+
+    // Fixed threshold
+    private static final int SUSPICION_THRESHOLD = 30;
 
     // Scan timing
-    private int scanCooldown = 0;
-    private int cleanupCooldown = 0;
     private int scanIndex = 0;
+    private int cleanupCooldown = 0;
     private List<WorldChunk> loadedChunks = new ArrayList<>();
 
     public SusChunkFinder() {
         super("SusChunk", "Highlights suspicious chunks in soft green", -1, Category.DONUT);
-        this.addSettings(renderChunks, threshold, scanInterval);
+        this.addSettings(debug);
     }
 
     @Override
@@ -75,10 +73,9 @@ public final class SusChunkFinder extends Module {
     public void onTick(TickEvent event) {
         if (mc.world == null || mc.player == null) return;
 
-        // Update loaded chunks list periodically (not every tick)
-        if (--scanCooldown <= 0) {
+        // Update loaded chunks list every 20 ticks
+        if (scanIndex == 0) {
             updateLoadedChunks();
-            scanCooldown = scanInterval.getIntValue();
         }
 
         // Scan one chunk per tick to spread out workload
@@ -90,26 +87,33 @@ public final class SusChunkFinder extends Module {
             scanIndex = 0;
         }
 
-        // Update uptime for all loaded chunks (cheap operation)
+        // Update uptime for all loaded chunks
         for (WorldChunk chunk : loadedChunks) {
             ChunkPos pos = chunk.getPos();
             ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
             uptimeTracker.updateUptime(data);
         }
 
-        // Clean up distant chunks periodically
+        // Clean up distant chunks every 10 seconds
         if (--cleanupCooldown <= 0) {
             cleanupDistantChunks();
-            cleanupCooldown = 200; // Every 10 seconds
+            cleanupCooldown = 200;
         }
     }
 
     @EventListener
     public void onRender3D(Render3DEvent event) {
-        if (!renderChunks.getValue() || mc.player == null || suspiciousChunks.isEmpty()) return;
+        if (mc.player == null || suspiciousChunks.isEmpty()) return;
 
         for (ChunkPos pos : suspiciousChunks) {
             chunkRenderer.renderChunkHighlight(event.matrixStack, pos);
+        }
+
+        // Debug info if enabled
+        if (debug.getValue() && !suspiciousChunks.isEmpty()) {
+            if (mc.player != null) {
+                mc.player.sendMessage(Text.literal("§aSuspicious chunks: " + suspiciousChunks.size()), true);
+            }
         }
     }
 
@@ -135,7 +139,7 @@ public final class SusChunkFinder extends Module {
 
         ChunkPos pos = chunk.getPos();
         
-        // Only scan chunks that haven't been scanned yet
+        // Only scan chunks once
         if (!scannedChunks.add(pos)) return;
 
         ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
@@ -162,9 +166,13 @@ public final class SusChunkFinder extends Module {
         data.setTotalScore(score);
         data.incrementTimesSeen();
 
-        // Mark as suspicious if threshold reached
-        if (score >= threshold.getIntValue()) {
+        // Mark as suspicious if threshold reached (fixed at 30)
+        if (score >= SUSPICION_THRESHOLD) {
             suspiciousChunks.add(pos);
+            
+            if (debug.getValue() && mc.player != null) {
+                mc.player.sendMessage(Text.literal("§aFound suspicious chunk at [" + pos.x + ", " + pos.z + "] score: " + score), false);
+            }
         }
     }
 
