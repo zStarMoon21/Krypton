@@ -24,8 +24,12 @@ public class SkinProtectMixin {
             if (mc.getNetworkHandler() != null) {
                 PlayerListEntry playerEntry = mc.getNetworkHandler().getPlayerListEntry(targetPlayer);
                 
-                if (playerEntry != null && playerEntry.getSkinTexture() != null) {
-                    cir.setReturnValue(playerEntry.getSkinTexture());
+                if (playerEntry != null) {
+                    // Use getSkinId() instead of getSkinTexture()
+                    Identifier skinId = playerEntry.getSkinId();
+                    if (skinId != null) {
+                        cir.setReturnValue(skinId);
+                    }
                 }
             }
         }
@@ -43,8 +47,11 @@ public class SkinProtectMixin {
                 PlayerListEntry playerEntry = mc.getNetworkHandler().getPlayerListEntry(targetPlayer);
                 
                 if (playerEntry != null) {
-                    // Also copy the player model type (slim/wide arms)
-                    cir.setReturnValue(playerEntry.getModel());
+                    // Get the model type (slim/wide)
+                    String model = playerEntry.getModel();
+                    if (model != null) {
+                        cir.setReturnValue(model);
+                    }
                 }
             }
         }
