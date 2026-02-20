@@ -17,10 +17,10 @@ public class HoleRenderer {
     
     private final MinecraftClient mc;
     
-    // Hole colors - bright and visible
-    private static final Color HOLE_1x1_COLOR = new Color(255, 100, 100, 180); // Red for 1x1 holes
-    private static final Color HOLE_2x1_COLOR = new Color(255, 200, 100, 180); // Orange for 2x1
-    private static final Color HOLE_3x1_COLOR = new Color(255, 255, 100, 180); // Yellow for 3x1
+    // Bright, unmistakable colors
+    private static final Color HOLE_1x1_COLOR = new Color(255, 0, 0, 255); // Solid red
+    private static final Color HOLE_2x1_COLOR = new Color(255, 165, 0, 255); // Solid orange
+    private static final Color HOLE_3x1_COLOR = new Color(255, 255, 0, 255); // Solid yellow
     
     private int scanCooldown = 0;
     private final List<Hole> holes = new ArrayList<>();
@@ -32,16 +32,25 @@ public class HoleRenderer {
     public void renderHoles(MatrixStack matrices) {
         if (mc.world == null || mc.player == null) return;
         
-        // Scan for holes every 40 ticks
+        // Scan for holes every 20 ticks
         if (--scanCooldown <= 0) {
             scanHoles();
-            scanCooldown = 40;
+            scanCooldown = 20;
         }
+        
+        if (holes.isEmpty()) return;
+        
+        // Save matrix state and apply camera transform
+        matrices.push();
+        Vec3d cameraPos = mc.gameRenderer.getCamera().getPos();
+        matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         
         // Render all holes
         for (Hole hole : holes) {
             renderHole(matrices, hole);
         }
+        
+        matrices.pop();
     }
     
     private void scanHoles() {
@@ -49,22 +58,19 @@ public class HoleRenderer {
         if (mc.player == null) return;
         
         BlockPos playerPos = mc.player.getBlockPos();
-        int radius = 20; // Scan 20 blocks around player
+        int radius = 20;
         
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                for (int y = -5; y <= 5; y++) { // Scan 5 blocks up and down
+                for (int y = -10; y <= 5; y++) {
                     BlockPos checkPos = playerPos.add(x, y, z);
                     
-                    // Check for 1x1 vertical hole
                     if (isOneByOneHole(checkPos)) {
                         holes.add(new Hole(checkPos, HoleType.ONE_BY_ONE));
                     }
-                    // Check for 2x1 vertical hole (like 2 blocks wide drop)
                     else if (isTwoByOneHole(checkPos)) {
                         holes.add(new Hole(checkPos, HoleType.TWO_BY_ONE));
                     }
-                    // Check for 3x1 vertical hole (like 3 blocks wide)
                     else if (isThreeByOneHole(checkPos)) {
                         holes.add(new Hole(checkPos, HoleType.THREE_BY_ONE));
                     }
@@ -76,8 +82,7 @@ public class HoleRenderer {
     private boolean isOneByOneHole(BlockPos pos) {
         // Check if it's a 1x1 shaft going down at least 3 blocks
         for (int i = 0; i < 3; i++) {
-            BlockPos checkPos = pos.down(i);
-            if (!mc.world.getBlockState(checkPos).isAir()) {
+            if (!mc.world.getBlockState(pos.down(i)).isAir()) {
                 return false;
             }
         }
@@ -90,7 +95,7 @@ public class HoleRenderer {
     }
     
     private boolean isTwoByOneHole(BlockPos pos) {
-        // Check for 2x1 hole (2 blocks wide, 1 deep)
+        // Check for 2x1 hole
         for (int i = 0; i < 3; i++) {
             if (!mc.world.getBlockState(pos.down(i)).isAir() ||
                 !mc.world.getBlockState(pos.down(i).east()).isAir()) {
@@ -98,7 +103,6 @@ public class HoleRenderer {
             }
         }
         
-        // Check surrounding walls
         return isSolidBlock(pos.down().north()) &&
                isSolidBlock(pos.down().south()) &&
                isSolidBlock(pos.down().west()) &&
@@ -106,7 +110,7 @@ public class HoleRenderer {
     }
     
     private boolean isThreeByOneHole(BlockPos pos) {
-        // Check for 3x1 hole (3 blocks wide, 1 deep)
+        // Check for 3x1 hole
         for (int i = 0; i < 3; i++) {
             if (!mc.world.getBlockState(pos.down(i)).isAir() ||
                 !mc.world.getBlockState(pos.down(i).east()).isAir() ||
@@ -115,7 +119,6 @@ public class HoleRenderer {
             }
         }
         
-        // Check surrounding walls
         return isSolidBlock(pos.down().north()) &&
                isSolidBlock(pos.down().south()) &&
                isSolidBlock(pos.down().west()) &&
@@ -125,10 +128,10 @@ public class HoleRenderer {
     private boolean isSolidBlock(BlockPos pos) {
         Block block = mc.world.getBlockState(pos).getBlock();
         return block != Blocks.AIR && 
-               block != Blocks.WATER && 
-               block != Blocks.LAVA &&
                block != Blocks.CAVE_AIR &&
-               block != Blocks.VOID_AIR;
+               block != Blocks.VOID_AIR &&
+               block != Blocks.WATER && 
+               block != Blocks.LAVA;
     }
     
     private void renderHole(MatrixStack matrices, Hole hole) {
@@ -145,21 +148,23 @@ public class HoleRenderer {
         
         Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
         
-        // Render the box outline
-        renderHoleBox(matrices, box, color);
+        // Render the box outline (all edges)
+        renderBoxEdges(matrices, box, color);
         
-        // Render a vertical line going down to show depth
-        double centerX = minX + (hole.type.width / 2);
+        // Render a thick vertical line going down
+        double centerX = minX + (hole.type.width / 2.0);
         double centerZ = minZ + 0.5;
-        double bottomY = pos.getY() - 10; // Show 10 blocks down
+        double bottomY = pos.getY() - 15;
         
-        RenderUtils.renderLine(matrices, color,
-                new Vec3d(centerX, minY, centerZ),
-                new Vec3d(centerX, bottomY, centerZ));
+        // Render multiple lines to make it thicker
+        for (double offset = -0.2; offset <= 0.2; offset += 0.2) {
+            RenderUtils.renderLine(matrices, color,
+                    new Vec3d(centerX + offset, minY, centerZ),
+                    new Vec3d(centerX + offset, bottomY, centerZ));
+        }
     }
     
-    private void renderHoleBox(MatrixStack matrices, Box box, Color color) {
-        // Render all 12 edges of the box
+    private void renderBoxEdges(MatrixStack matrices, Box box, Color color) {
         // Bottom edges
         renderLine(matrices, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, color);
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, color);
