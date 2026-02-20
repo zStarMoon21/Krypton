@@ -1,8 +1,9 @@
 package skid.krypton.module.modules.donut;
 
 import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.WorldChunk;  // FIXED: Removed the dot and space
+import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.event.EventListener;
 import skid.krypton.event.events.Render3DEvent;
 import skid.krypton.event.events.TickEvent;
@@ -17,8 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class SusChunkFinder extends Module {
 
-    // Only one setting - threshold is now fixed at 30
+    // Settings
     private final BooleanSetting debug = new BooleanSetting("Debug", false);
+    private final BooleanSetting holeEsp = new BooleanSetting("Hole ESP", true); // NEW OPTION
 
     // Detection components
     private GrowthDetector growthDetector;
@@ -27,6 +29,7 @@ public final class SusChunkFinder extends Module {
     private PillarDetector pillarDetector;
     private UptimeTracker uptimeTracker;
     private ChunkRenderer chunkRenderer;
+    private HoleRenderer holeRenderer; // NEW
 
     // Chunk data storage
     private final Map<ChunkPos, ChunkData> chunkDataMap = new ConcurrentHashMap<>();
@@ -42,8 +45,8 @@ public final class SusChunkFinder extends Module {
     private List<WorldChunk> loadedChunks = new ArrayList<>();
 
     public SusChunkFinder() {
-        super("SusChunk", "Highlights suspicious chunks in soft green", -1, Category.DONUT);
-        this.addSettings(debug);
+        super("SusChunk", "Highlights suspicious chunks and holes", -1, Category.DONUT);
+        this.addSettings(debug, holeEsp); // Added holeEsp to settings
     }
 
     @Override
@@ -54,6 +57,7 @@ public final class SusChunkFinder extends Module {
         pillarDetector = new PillarDetector();
         uptimeTracker = new UptimeTracker();
         chunkRenderer = new ChunkRenderer(mc);
+        holeRenderer = new HoleRenderer(mc); // Initialize hole renderer
 
         chunkDataMap.clear();
         suspiciousChunks.clear();
@@ -104,10 +108,18 @@ public final class SusChunkFinder extends Module {
 
     @EventListener
     public void onRender3D(Render3DEvent event) {
-        if (mc.player == null || suspiciousChunks.isEmpty()) return;
+        if (mc.player == null) return;
 
-        for (ChunkPos pos : suspiciousChunks) {
-            chunkRenderer.renderChunkHighlight(event.matrixStack, pos);
+        // Render suspicious chunks
+        if (!suspiciousChunks.isEmpty()) {
+            for (ChunkPos pos : suspiciousChunks) {
+                chunkRenderer.renderChunkHighlight(event.matrixStack, pos);
+            }
+        }
+
+        // Render holes if enabled
+        if (holeEsp.getValue()) {
+            holeRenderer.renderHoles(event.matrixStack);
         }
 
         // Debug info if enabled
