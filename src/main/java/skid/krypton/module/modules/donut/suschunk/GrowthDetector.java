@@ -23,7 +23,7 @@ public class GrowthDetector {
                         score += 4;
                     }
                     // Kelp detection (≥15 blocks tall)
-                    else if (block instanceof KelpBlock && isTallKelp(chunk, pos)) {
+                    else if (block instanceof KelpPlantBlock && isTallKelp(chunk, pos)) {
                         data.addTallKelp(pos.asLong());
                         score += 3;
                     }
@@ -33,7 +33,7 @@ public class GrowthDetector {
                         score += 6;
                     }
                     // Amethyst cluster (fully grown)
-                    else if (block instanceof AmethystClusterBlock && isFullyGrownAmethyst(state)) {
+                    else if (block instanceof AmethystClusterBlock) {
                         data.addAmethystCluster(pos.asLong());
                         score += 5;
                     }
@@ -72,7 +72,7 @@ public class GrowthDetector {
         BlockPos.Mutable mutable = pos.mutableCopy();
 
         // Count kelp blocks upward
-        while (chunk.getBlockState(mutable).getBlock() instanceof KelpBlock) {
+        while (chunk.getBlockState(mutable).getBlock() instanceof KelpPlantBlock) {
             height++;
             mutable.move(0, 1, 0);
         }
@@ -84,11 +84,12 @@ public class GrowthDetector {
         // Check if sugar cane is planted on sand/grass in a farm-like pattern
         BlockPos below = pos.down();
         BlockState belowState = chunk.getBlockState(below);
+        Block belowBlock = belowState.getBlock();
 
         // Sugar cane must be on sand, grass, or dirt
-        if (!(belowState.getBlock() instanceof SandBlock || 
-              belowState.getBlock() instanceof GrassBlock || 
-              belowState.getBlock() instanceof FarmlandBlock)) {
+        if (!(belowBlock instanceof SandBlock || 
+              belowBlock instanceof GrassBlock || 
+              belowBlock instanceof FarmlandBlock)) {
             return false;
         }
 
@@ -97,20 +98,12 @@ public class GrowthDetector {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dz == 0) continue;
                 BlockPos checkPos = below.add(dx, 0, dz);
-                if (chunk.getBlockState(checkPos).getBlock() instanceof FluidBlock) {
+                if (chunk.getBlockState(checkPos).getFluidState().isStill()) {
                     return true;
                 }
             }
         }
 
-        return false;
-    }
-
-    private boolean isFullyGrownAmethyst(BlockState state) {
-        if (state.getBlock() instanceof AmethystClusterBlock) {
-            // Check if it's a full cluster (buds are smaller)
-            return state.get(AmethystClusterBlock.FACING) != null;
-        }
         return false;
     }
 
