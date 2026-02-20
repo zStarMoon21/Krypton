@@ -2,7 +2,7 @@ package skid.krypton.module.modules.donut;
 
 import net.minecraft.text.Text;
 import net.minecraft.util.math.ChunkPos;
-import. world.chunk.WorldChunk;
+import net.minecraft.world.chunk.WorldChunk;  // FIXED: Removed the dot and space
 import skid.krypton.event.EventListener;
 import skid.krypton.event.events.Render3DEvent;
 import skid.krypton.event.events.TickEvent;
@@ -53,7 +53,6 @@ public final class SusChunkFinder extends Module {
         lightDetector = new LightDetector();
         pillarDetector = new PillarDetector();
         uptimeTracker = new UptimeTracker();
-        // FIXED: Pass mc instance to ChunkRenderer
         chunkRenderer = new ChunkRenderer(mc);
 
         chunkDataMap.clear();
