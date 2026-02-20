@@ -27,17 +27,16 @@ public final class SusChunkFinder extends Module {
     private final Map<ChunkPos, ChunkData> chunkDataMap = new ConcurrentHashMap<>();
     private final Set<ChunkPos> suspiciousChunks = ConcurrentHashMap.newKeySet();
     private final Set<ChunkPos> scannedChunks = ConcurrentHashMap.newKeySet();
+    private final Queue<ChunkPos> pendingScans = new ConcurrentLinkedQueue<>();
 
-    // Fixed threshold
-    private static final int SUSPICION_THRESHOLD = 26;
+    // Threshold
+    private static final int SUSPICION_THRESHOLD = 60; // Increased to 60
 
     // Performance
-    private int scanIndex = 0;
     private int cleanupCooldown = 0;
-    private List<WorldChunk> loadedChunks = new ArrayList<>();
 
     public SusChunkFinder() {
-        super("SusChunk", "Highlights suspicious chunks in soft green", -1, Category.DONUT);
+        super("SusChunk", "Highlights highly suspicious chunks in soft green", -1, Category.DONUT);
     }
 
     @Override
@@ -52,6 +51,7 @@ public final class SusChunkFinder extends Module {
         chunkDataMap.clear();
         suspiciousChunks.clear();
         scannedChunks.clear();
+        pendingScans.clear();
 
         super.onEnable();
     }
@@ -61,6 +61,7 @@ public final class SusChunkFinder extends Module {
         chunkDataMap.clear();
         suspiciousChunks.clear();
         scannedChunks.clear();
+        pendingScans.clear();
         super.onDisable();
     }
 
@@ -68,31 +69,22 @@ public final class SusChunkFinder extends Module {
     public void onTick(TickEvent event) {
         if (mc.world == null || mc.player == null) return;
 
-        // Update loaded chunks every 20 ticks
-        if (scanIndex == 0) {
-            updateLoadedChunks();
+        // Queue new chunks for scanning (fast operation)
+        queueNewChunks();
+
+        // Process one chunk per tick (spreads workload)
+        if (!pendingScans.isEmpty()) {
+            ChunkPos pos = pendingScans.poll();
+            WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(pos.x, pos.z);
+            if (chunk != null) {
+                scanChunk(chunk);
+            }
         }
 
-        // Scan one chunk per tick (spreads workload)
-        if (!loadedChunks.isEmpty() && scanIndex < loadedChunks.size()) {
-            WorldChunk chunk = loadedChunks.get(scanIndex);
-            scanChunk(chunk);
-            scanIndex++;
-        } else {
-            scanIndex = 0;
-        }
-
-        // Update uptime for all loaded chunks
-        for (WorldChunk chunk : loadedChunks) {
-            ChunkPos pos = chunk.getPos();
-            ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
-            uptimeTracker.updateUptime(data);
-        }
-
-        // Clean up distant chunks every 10 seconds
+        // Clean up distant chunks every 5 seconds
         if (--cleanupCooldown <= 0) {
             cleanupDistantChunks();
-            cleanupCooldown = 200;
+            cleanupCooldown = 100; // 5 seconds
         }
     }
 
@@ -105,18 +97,20 @@ public final class SusChunkFinder extends Module {
         }
     }
 
-    private void updateLoadedChunks() {
-        loadedChunks.clear();
+    private void queueNewChunks() {
         if (mc.world == null || mc.player == null) return;
 
         int viewDist = mc.options.getViewDistance().getValue();
         ChunkPos playerChunk = mc.player.getChunkPos();
 
+        // Quick scan of all chunks in render distance
         for (int x = -viewDist; x <= viewDist; x++) {
             for (int z = -viewDist; z <= viewDist; z++) {
-                WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(playerChunk.x + x, playerChunk.z + z);
-                if (chunk != null) {
-                    loadedChunks.add(chunk);
+                ChunkPos pos = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
+                
+                // Only queue if not scanned and not already queued
+                if (!scannedChunks.contains(pos) && !pendingScans.contains(pos)) {
+                    pendingScans.add(pos);
                 }
             }
         }
@@ -127,35 +121,34 @@ public final class SusChunkFinder extends Module {
 
         ChunkPos pos = chunk.getPos();
         
-        // Only scan chunks once
-        if (!scannedChunks.add(pos)) return;
+        // Mark as scanned immediately to prevent re-queueing
+        scannedChunks.add(pos);
 
         ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
 
         int score = 0;
 
-        // 1. Growth detection
+        // 1. Growth detection (fast)
         score += growthDetector.scanChunk(chunk, data);
 
-        // 2. Kelp gap detection
+        // 2. Kelp gap detection (fast for ocean chunks)
         if (kelpGapDetector.isOceanChunk(chunk)) {
             score += kelpGapDetector.scanForKelpGaps(chunk, data);
         }
 
-        // 3. Underground light detection
+        // 3. Underground light detection (fast)
         score += lightDetector.scanForLightPatterns(chunk, data);
 
-        // 4. Pillar detection
+        // 4. Pillar detection (fast)
         score += pillarDetector.scanForPillars(chunk, data);
 
-        // 5. Uptime score
+        // 5. Uptime score (instant)
         score += uptimeTracker.calculateUptimeScore(data);
 
         data.setTotalScore(score);
-        data.incrementTimesSeen();
 
-        // Mark as suspicious if threshold reached
-        if (score >= SUSPICION_THRESHOLD && data.getLoadTime() > 600) { // 30 seconds minimum
+        // INSTANT HIGHLIGHT - no load time requirement
+        if (score >= SUSPICION_THRESHOLD) {
             suspiciousChunks.add(pos);
         }
     }
@@ -166,23 +159,30 @@ public final class SusChunkFinder extends Module {
         int viewDist = mc.options.getViewDistance().getValue();
         ChunkPos playerChunk = mc.player.getChunkPos();
 
+        // Remove chunks outside render distance + buffer
         suspiciousChunks.removeIf(pos -> {
             int dx = Math.abs(pos.x - playerChunk.x);
             int dz = Math.abs(pos.z - playerChunk.z);
-            return dx > viewDist + 2 || dz > viewDist + 2;
+            return dx > viewDist + 4 || dz > viewDist + 4;
         });
 
         scannedChunks.removeIf(pos -> {
             int dx = Math.abs(pos.x - playerChunk.x);
             int dz = Math.abs(pos.z - playerChunk.z);
-            return dx > viewDist + 4 || dz > viewDist + 4;
+            return dx > viewDist + 8 || dz > viewDist + 8;
+        });
+
+        pendingScans.removeIf(pos -> {
+            int dx = Math.abs(pos.x - playerChunk.x);
+            int dz = Math.abs(pos.z - playerChunk.z);
+            return dx > viewDist + 8 || dz > viewDist + 8;
         });
 
         chunkDataMap.entrySet().removeIf(entry -> {
             ChunkPos pos = entry.getKey();
             int dx = Math.abs(pos.x - playerChunk.x);
             int dz = Math.abs(pos.z - playerChunk.z);
-            return dx > viewDist + 4 || dz > viewDist + 4;
+            return dx > viewDist + 8 || dz > viewDist + 8;
         });
     }
 }
