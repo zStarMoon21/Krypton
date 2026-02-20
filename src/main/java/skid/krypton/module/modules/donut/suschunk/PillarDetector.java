@@ -10,8 +10,9 @@ public class PillarDetector {
     public int scanForPillars(WorldChunk chunk, ChunkData data) {
         int pillarCount = 0;
 
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
+        // Scan every 2 blocks for performance
+        for (int x = 0; x < 16; x += 2) {
+            for (int z = 0; z < 16; z += 2) {
                 int height = 0;
                 Block lastBlock = null;
                 BlockPos.Mutable mutable = new BlockPos.Mutable(
@@ -20,7 +21,8 @@ public class PillarDetector {
                     chunk.getPos().getStartZ() + z
                 );
 
-                for (int y = chunk.getBottomY(); y < chunk.getTopY(); y++) {
+                // Scan every 2 blocks vertically too
+                for (int y = chunk.getBottomY(); y < chunk.getTopY(); y += 2) {
                     mutable.setY(y);
                     Block block = chunk.getBlockState(mutable).getBlock();
 
@@ -34,12 +36,12 @@ public class PillarDetector {
                     }
 
                     if (block == lastBlock) {
-                        height++;
+                        height += 2; // We're scanning every 2 blocks
                     } else {
                         if (height >= 6 && isValidPillar(lastBlock)) {
                             pillarCount++;
                         }
-                        height = 1;
+                        height = 2;
                         lastBlock = block;
                     }
                 }
@@ -50,8 +52,10 @@ public class PillarDetector {
             }
         }
 
-        if (pillarCount > 10) return 10;
-        if (pillarCount > 5) return 7;
+        // Scale score based on pillar count
+        if (pillarCount > 15) return 10;
+        if (pillarCount > 10) return 8;
+        if (pillarCount > 5) return 6;
         if (pillarCount > 2) return 4;
         return 0;
     }
