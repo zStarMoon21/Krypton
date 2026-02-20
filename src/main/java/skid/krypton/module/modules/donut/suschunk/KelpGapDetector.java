@@ -1,25 +1,29 @@
 package skid.krypton.module.modules.donut.suschunk;
 
-import net.minecraft.block.Blocks;
-import net.minecraft.block.KelpBlock;
+import net.minecraft.block.KelpPlantBlock;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.Heightmap;
+import net.minecraft.world.biome.Biome;
 import net.minecraft.world.biome.BiomeKeys;
 import net.minecraft.world.chunk.WorldChunk;
 
 public class KelpGapDetector {
 
     public boolean isOceanChunk(WorldChunk chunk) {
-        var biome = chunk.getBiomeForNoiseGen(8, 0, 8).value();
-        return biome == BiomeKeys.OCEAN || 
-               biome == BiomeKeys.DEEP_OCEAN || 
-               biome == BiomeKeys.COLD_OCEAN || 
-               biome == BiomeKeys.DEEP_COLD_OCEAN ||
-               biome == BiomeKeys.FROZEN_OCEAN || 
-               biome == BiomeKeys.DEEP_FROZEN_OCEAN ||
-               biome == BiomeKeys.LUKEWARM_OCEAN || 
-               biome == BiomeKeys.DEEP_LUKEWARM_OCEAN ||
-               biome == BiomeKeys.WARM_OCEAN;
+        RegistryEntry<Biome> biomeEntry = chunk.getBiomeForNoiseGen(8, 0, 8);
+        RegistryKey<Biome> biomeKey = biomeEntry.getKey().orElse(null);
+
+        return biomeKey == BiomeKeys.OCEAN ||
+               biomeKey == BiomeKeys.DEEP_OCEAN ||
+               biomeKey == BiomeKeys.COLD_OCEAN ||
+               biomeKey == BiomeKeys.DEEP_COLD_OCEAN ||
+               biomeKey == BiomeKeys.FROZEN_OCEAN ||
+               biomeKey == BiomeKeys.DEEP_FROZEN_OCEAN ||
+               biomeKey == BiomeKeys.LUKEWARM_OCEAN ||
+               biomeKey == BiomeKeys.DEEP_LUKEWARM_OCEAN ||
+               biomeKey == BiomeKeys.WARM_OCEAN;
     }
 
     public int scanForKelpGaps(WorldChunk chunk, ChunkData data) {
@@ -42,7 +46,7 @@ public class KelpGapDetector {
                 // Count kelp
                 for (int y = topY; y <= seaLevel; y++) {
                     BlockPos checkPos = new BlockPos(pos.getX(), y, pos.getZ());
-                    if (chunk.getBlockState(checkPos).getBlock() instanceof KelpBlock) {
+                    if (chunk.getBlockState(checkPos).getBlock() instanceof KelpPlantBlock) {
                         kelpCount++;
                         break;
                     }
@@ -79,7 +83,7 @@ public class KelpGapDetector {
 
                 for (int y = topY; y <= seaLevel; y++) {
                     BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
-                    if (chunk.getBlockState(pos).getBlock() instanceof KelpBlock) {
+                    if (chunk.getBlockState(pos).getBlock() instanceof KelpPlantBlock) {
                         hasKelp = true;
                         highestKelp = y;
                     }
@@ -99,7 +103,7 @@ public class KelpGapDetector {
                 boolean hasKelp = false;
                 for (int y = topY; y <= chunk.getWorld().getSeaLevel(); y++) {
                     BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
-                    if (chunk.getBlockState(pos).getBlock() instanceof KelpBlock) {
+                    if (chunk.getBlockState(pos).getBlock() instanceof KelpPlantBlock) {
                         hasKelp = true;
                         break;
                     }
