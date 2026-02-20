@@ -1,5 +1,6 @@
 package skid.krypton.module.modules.donut.suschunk;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
@@ -10,6 +11,9 @@ import java.awt.Color;
 
 public class ChunkRenderer {
     
+    // Add Minecraft client instance
+    private final MinecraftClient mc;
+    
     // Clean soft green - not too bright, not too dark
     private static final Color CHUNK_COLOR = new Color(100, 255, 100, 45);  // Very transparent fill
     private static final Color BORDER_COLOR = new Color(80, 220, 80, 160);  // Slightly visible border
@@ -17,6 +21,11 @@ public class ChunkRenderer {
     // Fixed render height at Y=60 (clean, above most terrain)
     private static final double RENDER_HEIGHT = 60.0;
     private static final double THICKNESS = 0.2; // Thin, clean highlight
+
+    // Constructor to pass Minecraft client
+    public ChunkRenderer(MinecraftClient mc) {
+        this.mc = mc;
+    }
 
     public void renderChunkHighlight(MatrixStack matrixStack, ChunkPos chunkPos) {
         matrixStack.push();
@@ -66,7 +75,7 @@ public class ChunkRenderer {
     }
     
     private Vec3d getCameraPos() {
-        if (mc.gameRenderer == null || mc.gameRenderer.getCamera() == null) {
+        if (mc == null || mc.gameRenderer == null || mc.gameRenderer.getCamera() == null) {
             return Vec3d.ZERO;
         }
         return mc.gameRenderer.getCamera().getPos();
