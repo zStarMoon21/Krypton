@@ -56,6 +56,7 @@ public final class ModuleManager {
         this.a(new BoneDropper());
         this.a(new AutoSell());
         this.a(new ShulkerDropper());
+        this.a(new SusChunkFinder());
         this.a(new AntiTrap());
         this.a(new AuctionSniper());
         this.a(new AutoSpawnerSell());
