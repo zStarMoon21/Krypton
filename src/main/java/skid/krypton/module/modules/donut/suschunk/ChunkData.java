@@ -1,6 +1,7 @@
 package skid.krypton.module.modules.donut.suschunk;
 
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.text.Text;
 
 import java.util.HashSet;
 import java.util.Set;
