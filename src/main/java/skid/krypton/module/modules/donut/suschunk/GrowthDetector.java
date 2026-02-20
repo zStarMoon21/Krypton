@@ -73,8 +73,9 @@ public class GrowthDetector {
         BlockPos below = pos.down();
         Block belowBlock = chunk.getBlockState(below).getBlock();
 
-        // Fast check for sand/grass/farmland
-        if (!(belowBlock instanceof SandBlock || 
+        // Check for sand, grass, or farmland by block type
+        if (!(belowBlock == Blocks.SAND || 
+              belowBlock == Blocks.RED_SAND ||
               belowBlock instanceof GrassBlock || 
               belowBlock == Blocks.FARMLAND)) {
             return false;
