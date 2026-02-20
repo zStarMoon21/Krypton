@@ -29,24 +29,20 @@ public class KelpGapDetector {
     public int scanForKelpGaps(WorldChunk chunk, ChunkData data) {
         int score = 0;
         int kelpCount = 0;
-        int waterDepth = 0;
+        int deepWaterCount = 0;
 
-        // Check water depth and count kelp
-        for (int x = 0; x < 16; x += 4) { // Sample every 4 blocks
+        for (int x = 0; x < 16; x += 4) {
             for (int z = 0; z < 16; z += 4) {
                 int topY = chunk.sampleHeightmap(Heightmap.Type.OCEAN_FLOOR, x, z);
-                BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, topY, chunk.getPos().getStartZ() + z);
-
-                // Check depth
                 int seaLevel = chunk.getWorld().getSeaLevel();
+
                 if (seaLevel - topY > 10) {
-                    waterDepth++;
+                    deepWaterCount++;
                 }
 
-                // Count kelp
                 for (int y = topY; y <= seaLevel; y++) {
-                    BlockPos checkPos = new BlockPos(pos.getX(), y, pos.getZ());
-                    if (chunk.getBlockState(checkPos).getBlock() instanceof KelpPlantBlock) {
+                    BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
+                    if (chunk.getBlockState(pos).getBlock() instanceof KelpPlantBlock) {
                         kelpCount++;
                         break;
                     }
@@ -54,12 +50,10 @@ public class KelpGapDetector {
             }
         }
 
-        // Deep ocean with few kelp = suspicious
-        if (waterDepth > 5 && kelpCount < 5) {
+        if (deepWaterCount > 5 && kelpCount < 5) {
             score += 10;
         }
 
-        // Check for cut patterns (flat tops, straight lines)
         if (hasCutPattern(chunk)) {
             score += 8;
         }
@@ -69,51 +63,26 @@ public class KelpGapDetector {
 
     private boolean hasCutPattern(WorldChunk chunk) {
         int flatTops = 0;
-        int straightLines = 0;
 
-        // Detect flat kelp tops (kelp that doesn't reach surface)
         for (int x = 0; x < 16; x += 2) {
             for (int z = 0; z < 16; z += 2) {
                 int topY = chunk.sampleHeightmap(Heightmap.Type.OCEAN_FLOOR, x, z);
                 int seaLevel = chunk.getWorld().getSeaLevel();
-
-                // Check if kelp stops well below surface
-                boolean hasKelp = false;
                 int highestKelp = 0;
 
                 for (int y = topY; y <= seaLevel; y++) {
                     BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
                     if (chunk.getBlockState(pos).getBlock() instanceof KelpPlantBlock) {
-                        hasKelp = true;
                         highestKelp = y;
                     }
                 }
 
-                if (hasKelp && seaLevel - highestKelp > 5) {
+                if (highestKelp > 0 && seaLevel - highestKelp > 5) {
                     flatTops++;
                 }
             }
         }
 
-        // Detect straight line patterns (possible paths)
-        for (int x = 0; x < 16; x++) {
-            int kelpInLine = 0;
-            for (int z = 0; z < 16; z++) {
-                int topY = chunk.sampleHeightmap(Heightmap.Type.OCEAN_FLOOR, x, z);
-                boolean hasKelp = false;
-                for (int y = topY; y <= chunk.getWorld().getSeaLevel(); y++) {
-                    BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
-                    if (chunk.getBlockState(pos).getBlock() instanceof KelpPlantBlock) {
-                        hasKelp = true;
-                        break;
-                    }
-                }
-                if (!hasKelp) kelpInLine = 0;
-                else kelpInLine++;
-            }
-            if (kelpInLine > 10) straightLines++;
-        }
-
-        return flatTops > 10 || straightLines > 3;
+        return flatTops > 10;
     }
 }
