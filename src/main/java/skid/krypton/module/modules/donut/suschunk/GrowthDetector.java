@@ -86,10 +86,14 @@ public class GrowthDetector {
         BlockState belowState = chunk.getBlockState(below);
         Block belowBlock = belowState.getBlock();
 
-        // Sugar cane must be on sand, grass, or dirt
-        if (!(belowBlock instanceof SandBlock || 
-              belowBlock instanceof GrassBlock || 
-              belowBlock instanceof FarmlandBlock)) {
+        // Sugar cane must be on sand, grass, or dirt - check by block ID instead of class
+        if (!(belowBlock == Blocks.SAND || 
+              belowBlock == Blocks.RED_SAND ||
+              belowBlock == Blocks.GRASS_BLOCK || 
+              belowBlock == Blocks.DIRT ||
+              belowBlock == Blocks.COARSE_DIRT ||
+              belowBlock == Blocks.ROOTED_DIRT ||
+              belowBlock == Blocks.FARMLAND)) {
             return false;
         }
 
@@ -112,6 +116,7 @@ public class GrowthDetector {
         BlockPos.Mutable mutable = pos.mutableCopy();
 
         // Count dripstone blocks upward and downward
+        mutable.set(pos);
         while (chunk.getBlockState(mutable).getBlock() instanceof PointedDripstoneBlock) {
             height++;
             mutable.move(0, 1, 0);
