@@ -54,7 +54,7 @@ public class LightDetector {
         var block = chunk.getBlockState(pos).getBlock();
 
         // Lava
-        if (block == Blocks.LAVA || block == Blocks.FLOWING_LAVA) {
+        if (block == Blocks.LAVA) {
             return true;
         }
 
