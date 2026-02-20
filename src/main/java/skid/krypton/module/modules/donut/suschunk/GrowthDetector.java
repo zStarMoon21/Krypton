@@ -9,9 +9,10 @@ public class GrowthDetector {
     public int scanChunk(WorldChunk chunk, ChunkData data) {
         int score = 0;
 
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = chunk.getBottomY(); y < chunk.getTopY(); y++) {
+        // Scan only every 2 blocks for performance
+        for (int x = 0; x < 16; x += 2) {
+            for (int z = 0; z < 16; z += 2) {
+                for (int y = chunk.getBottomY(); y < chunk.getTopY(); y += 2) {
                     BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
                     Block block = chunk.getBlockState(pos).getBlock();
 
@@ -49,7 +50,8 @@ public class GrowthDetector {
     private boolean isTallBamboo(WorldChunk chunk, BlockPos pos) {
         int height = 0;
         BlockPos.Mutable mutable = pos.mutableCopy();
-        while (chunk.getBlockState(mutable).getBlock() instanceof BambooBlock) {
+        for (int i = 0; i < 15; i++) {
+            if (!(chunk.getBlockState(mutable).getBlock() instanceof BambooBlock)) break;
             height++;
             mutable.move(0, -1, 0);
         }
@@ -59,7 +61,8 @@ public class GrowthDetector {
     private boolean isTallKelp(WorldChunk chunk, BlockPos pos) {
         int height = 0;
         BlockPos.Mutable mutable = pos.mutableCopy();
-        while (chunk.getBlockState(mutable).getBlock() instanceof KelpPlantBlock) {
+        for (int i = 0; i < 20; i++) {
+            if (!(chunk.getBlockState(mutable).getBlock() instanceof KelpPlantBlock)) break;
             height++;
             mutable.move(0, 1, 0);
         }
@@ -70,33 +73,32 @@ public class GrowthDetector {
         BlockPos below = pos.down();
         Block belowBlock = chunk.getBlockState(below).getBlock();
 
-        if (!(belowBlock instanceof SandBlock || belowBlock instanceof GrassBlock || belowBlock instanceof FarmlandBlock)) {
+        // Fast check for sand/grass/farmland
+        if (!(belowBlock instanceof SandBlock || 
+              belowBlock instanceof GrassBlock || 
+              belowBlock == Blocks.FARMLAND)) {
             return false;
         }
 
-        // Check for adjacent water
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                if (dx == 0 && dz == 0) continue;
-                if (chunk.getBlockState(below.add(dx, 0, dz)).getFluidState().isStill()) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        // Quick water check (only check 4 directions)
+        return chunk.getBlockState(below.north()).getFluidState().isStill() ||
+               chunk.getBlockState(below.south()).getFluidState().isStill() ||
+               chunk.getBlockState(below.east()).getFluidState().isStill() ||
+               chunk.getBlockState(below.west()).getFluidState().isStill();
     }
 
     private boolean isLargeDripstoneChain(WorldChunk chunk, BlockPos pos) {
-        int height = 0;
+        int height = 1;
         BlockPos.Mutable mutable = pos.mutableCopy();
         
-        mutable.set(pos);
+        mutable.move(0, 1, 0);
         while (chunk.getBlockState(mutable).getBlock() instanceof PointedDripstoneBlock) {
             height++;
             mutable.move(0, 1, 0);
         }
         
         mutable.set(pos);
+        mutable.move(0, -1, 0);
         while (chunk.getBlockState(mutable).getBlock() instanceof PointedDripstoneBlock) {
             height++;
             mutable.move(0, -1, 0);
@@ -108,7 +110,8 @@ public class GrowthDetector {
     private boolean isLongVine(WorldChunk chunk, BlockPos pos) {
         int height = 0;
         BlockPos.Mutable mutable = pos.mutableCopy();
-        while (chunk.getBlockState(mutable).getBlock() instanceof VineBlock) {
+        for (int i = 0; i < 15; i++) {
+            if (!(chunk.getBlockState(mutable).getBlock() instanceof VineBlock)) break;
             height++;
             mutable.move(0, -1, 0);
         }
