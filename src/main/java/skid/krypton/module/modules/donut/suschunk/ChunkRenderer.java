@@ -2,6 +2,7 @@ package skid.krypton.module.modules.donut.suschunk;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
@@ -13,10 +14,11 @@ public class ChunkRenderer {
 
     private final MinecraftClient mc;
 
-    private static final Color CHUNK_COLOR = new Color(100, 255, 100, 60); // Slightly more opaque
-    private static final Color BORDER_COLOR = new Color(80, 220, 80, 255); // Full opacity borders
+    // Much more visible colors
+    private static final Color CHUNK_COLOR = new Color(100, 255, 100, 120); // Much more opaque
+    private static final Color BORDER_COLOR = new Color(0, 255, 0, 255); // Bright green borders
 
-    private static final double THICKNESS = 0.5; // Thicker so it's more visible
+    private static final double THICKNESS = 1.0; // Thicker so it's definitely visible
     private static final double RENDER_HEIGHT = 60.0;
 
     public ChunkRenderer(MinecraftClient mc) {
@@ -39,6 +41,9 @@ public class ChunkRenderer {
         
         // Also render vertical lines at chunk corners for better visibility
         renderVerticalCorners(matrices, minX, maxX, minZ, maxZ);
+        
+        // Add a beacon-style beam at the center for extra visibility
+        renderCenterBeam(matrices, minX, maxX, minZ, maxZ);
     }
 
     private void renderChunkBox(MatrixStack matrices, Box box) {
@@ -50,6 +55,9 @@ public class ChunkRenderer {
 
         // Render the top edges
         renderTopEdges(matrices, box);
+        
+        // Render bottom edges for extra visibility
+        renderBottomEdges(matrices, box);
     }
 
     private void renderTopEdges(MatrixStack matrices, Box box) {
@@ -60,21 +68,36 @@ public class ChunkRenderer {
         renderLine(matrices, box.maxX, y, box.maxZ, box.minX, y, box.maxZ);
         renderLine(matrices, box.minX, y, box.maxZ, box.minX, y, box.minZ);
     }
+    
+    private void renderBottomEdges(MatrixStack matrices, Box box) {
+        double y = box.minY;
+
+        renderLine(matrices, box.minX, y, box.minZ, box.maxX, y, box.minZ);
+        renderLine(matrices, box.maxX, y, box.minZ, box.maxX, y, box.maxZ);
+        renderLine(matrices, box.maxX, y, box.maxZ, box.minX, y, box.maxZ);
+        renderLine(matrices, box.minX, y, box.maxZ, box.minX, y, box.minZ);
+    }
 
     private void renderVerticalCorners(MatrixStack matrices, double minX, double maxX, double minZ, double maxZ) {
         // Render vertical lines at the four corners from Y=60 down to player height
         double playerY = mc.player.getY();
-        double startY = Math.max(RENDER_HEIGHT, playerY - 10);
-        double endY = Math.min(RENDER_HEIGHT + THICKNESS, playerY + 10);
+        double bottomY = Math.min(RENDER_HEIGHT, playerY - 5);
+        double topY = Math.max(RENDER_HEIGHT + THICKNESS, playerY + 5);
 
-        // Only render if the vertical line would be visible
-        if (startY < endY) {
-            // Four corners
-            renderLine(matrices, minX, startY, minZ, minX, endY, minZ);
-            renderLine(matrices, maxX, startY, minZ, maxX, endY, minZ);
-            renderLine(matrices, maxX, startY, maxZ, maxX, endY, maxZ);
-            renderLine(matrices, minX, startY, maxZ, minX, endY, maxZ);
-        }
+        // Four corners - long vertical lines
+        renderLine(matrices, minX, bottomY, minZ, minX, topY, minZ);
+        renderLine(matrices, maxX, bottomY, minZ, maxX, topY, minZ);
+        renderLine(matrices, maxX, bottomY, maxZ, maxX, topY, maxZ);
+        renderLine(matrices, minX, bottomY, maxZ, minX, topY, maxZ);
+    }
+    
+    private void renderCenterBeam(MatrixStack matrices, double minX, double maxX, double minZ, double maxZ) {
+        double centerX = (minX + maxX) / 2;
+        double centerZ = (minZ + maxZ) / 2;
+        double playerY = mc.player.getY();
+        
+        // Render a vertical beam at the center of the chunk
+        renderLine(matrices, centerX, RENDER_HEIGHT - 10, centerZ, centerX, RENDER_HEIGHT + THICKNESS + 10, centerZ);
     }
 
     private void renderLine(MatrixStack matrices, double x1, double y1, double z1,
