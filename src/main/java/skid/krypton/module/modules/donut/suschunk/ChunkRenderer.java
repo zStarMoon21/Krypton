@@ -13,7 +13,7 @@ public class ChunkRenderer {
 
     private final MinecraftClient mc;
 
-    // Bright and visible colors
+    // Bright, impossible-to-miss colors
     private static final Color CHUNK_COLOR = new Color(0, 255, 0, 100);
     private static final Color BORDER_COLOR = new Color(255, 255, 255, 255);
 
@@ -27,10 +27,10 @@ public class ChunkRenderer {
     public void renderChunkHighlight(MatrixStack matrices, ChunkPos chunkPos) {
         if (mc.world == null || mc.player == null) return;
 
-        // Save the current matrix state
+        // Save matrix state
         matrices.push();
         
-        // Get camera position for proper 3D rendering
+        // Get camera position and translate (this is crucial for 3D rendering)
         Vec3d cameraPos = mc.gameRenderer.getCamera().getPos();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
 
@@ -40,31 +40,28 @@ public class ChunkRenderer {
         double maxX = chunkPos.getEndX() + 1;
         double maxZ = chunkPos.getEndZ() + 1;
 
-        // Create the highlight box at Y=60
+        // Create the highlight box
         Box box = new Box(minX, RENDER_HEIGHT, minZ, maxX, RENDER_HEIGHT + THICKNESS, maxZ);
 
         // Render the box
-        renderChunkBox(matrices, box);
+        renderBox(matrices, box);
         
-        // Render vertical lines at chunk corners
-        renderVerticalCorners(matrices, minX, maxX, minZ, maxZ);
-        
-        // Restore the matrix state
+        // Restore matrix state
         matrices.pop();
     }
 
-    private void renderChunkBox(MatrixStack matrices, Box box) {
+    private void renderBox(MatrixStack matrices, Box box) {
         // Render the transparent fill
         RenderUtils.renderFilledBox(matrices,
                 (float) box.minX, (float) box.minY, (float) box.minZ,
                 (float) box.maxX, (float) box.maxY, (float) box.maxZ,
                 CHUNK_COLOR);
 
-        // Render all edges of the box
-        renderBoxEdges(matrices, box);
+        // Render all edges
+        renderEdges(matrices, box);
     }
 
-    private void renderBoxEdges(MatrixStack matrices, Box box) {
+    private void renderEdges(MatrixStack matrices, Box box) {
         // Bottom edges
         renderLine(matrices, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ);
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ);
@@ -82,18 +79,6 @@ public class ChunkRenderer {
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.maxY, box.minZ);
         renderLine(matrices, box.maxX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ);
         renderLine(matrices, box.minX, box.minY, box.maxZ, box.minX, box.maxY, box.maxZ);
-    }
-
-    private void renderVerticalCorners(MatrixStack matrices, double minX, double maxX, double minZ, double maxZ) {
-        double playerY = mc.player.getY();
-        double topY = Math.max(RENDER_HEIGHT, playerY);
-        double bottomY = Math.min(RENDER_HEIGHT, playerY);
-
-        // Four corners - vertical lines connecting to player height
-        renderLine(matrices, minX, bottomY, minZ, minX, topY, minZ);
-        renderLine(matrices, maxX, bottomY, minZ, maxX, topY, minZ);
-        renderLine(matrices, maxX, bottomY, maxZ, maxX, topY, maxZ);
-        renderLine(matrices, minX, bottomY, maxZ, minX, topY, maxZ);
     }
 
     private void renderLine(MatrixStack matrices, double x1, double y1, double z1,
