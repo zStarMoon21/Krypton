@@ -7,11 +7,12 @@ import skid.krypton.utils.EncryptedString;
 
 public class SkinProtect extends Module {
     private final StringSetting targetPlayer = new StringSetting("Target Player", "Steve");
-    private final StringSetting fakeName = new StringSetting("Display Name", "");
+    private static SkinProtect instance;
     
     public SkinProtect() {
-        super(EncryptedString.of("Skin Protect"), EncryptedString.of("Spoofs your skin to look like another player."), -1, Category.MISC);
-        this.addSettings(this.targetPlayer, this.fakeName);
+        super(EncryptedString.of("Skin Protect"), EncryptedString.of("Makes you look like another player."), -1, Category.MISC);
+        this.addSettings(this.targetPlayer);
+        instance = this;
     }
 
     @Override
@@ -28,8 +29,7 @@ public class SkinProtect extends Module {
         return this.targetPlayer.getValue();
     }
     
-    public String getFakeName() {
-        String name = this.fakeName.getValue();
-        return name.isEmpty() ? this.targetPlayer.getValue() : name;
+    public static SkinProtect getInstance() {
+        return instance;
     }
 }
