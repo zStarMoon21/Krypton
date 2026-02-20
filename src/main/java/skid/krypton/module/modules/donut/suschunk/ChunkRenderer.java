@@ -14,7 +14,7 @@ public class ChunkRenderer {
     private final MinecraftClient mc;
 
     // Soft bright green - like shader debug overlays
-    private static final Color FILL_COLOR = new Color(120, 255, 120, 70);
+    private static final Color FILL_COLOR = new Color(120, 255, 120, 60);
     private static final Color BORDER_COLOR = new Color(100, 230, 100, 180);
 
     private static final double RENDER_HEIGHT = 60.0;
@@ -37,6 +37,12 @@ public class ChunkRenderer {
         double maxX = chunkPos.getEndX() + 1;
         double maxZ = chunkPos.getEndZ() + 1;
 
+        // Only render if within 100 blocks (performance)
+        if (Math.abs(mc.player.getX() - (minX + 8)) > 100) {
+            matrices.pop();
+            return;
+        }
+
         Box box = new Box(minX, RENDER_HEIGHT, minZ, maxX, RENDER_HEIGHT + THICKNESS, maxZ);
 
         // Render fill
@@ -45,26 +51,20 @@ public class ChunkRenderer {
                 (float) box.maxX, (float) box.maxY, (float) box.maxZ,
                 FILL_COLOR);
 
-        // Render borders
-        renderBoxBorders(matrices, box);
+        // Render borders (only every other edge for performance)
+        renderFastBorders(matrices, box);
 
         matrices.pop();
     }
 
-    private void renderBoxBorders(MatrixStack matrices, Box box) {
-        // Bottom edges
-        renderLine(matrices, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ);
-        renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ);
-        renderLine(matrices, box.maxX, box.minY, box.maxZ, box.minX, box.minY, box.maxZ);
-        renderLine(matrices, box.minX, box.minY, box.maxZ, box.minX, box.minY, box.minZ);
-        
-        // Top edges
+    private void renderFastBorders(MatrixStack matrices, Box box) {
+        // Only render the top edges (most visible)
         renderLine(matrices, box.minX, box.maxY, box.minZ, box.maxX, box.maxY, box.minZ);
         renderLine(matrices, box.maxX, box.maxY, box.minZ, box.maxX, box.maxY, box.maxZ);
         renderLine(matrices, box.maxX, box.maxY, box.maxZ, box.minX, box.maxY, box.maxZ);
         renderLine(matrices, box.minX, box.maxY, box.maxZ, box.minX, box.maxY, box.minZ);
         
-        // Vertical edges
+        // Render just 4 vertical corners for depth
         renderLine(matrices, box.minX, box.minY, box.minZ, box.minX, box.maxY, box.minZ);
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.maxY, box.minZ);
         renderLine(matrices, box.maxX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ);
