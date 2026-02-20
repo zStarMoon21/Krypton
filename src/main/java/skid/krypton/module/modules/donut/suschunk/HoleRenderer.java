@@ -17,10 +17,10 @@ public class HoleRenderer {
     
     private final MinecraftClient mc;
     
-    // Bright, unmistakable colors
-    private static final Color HOLE_1x1_COLOR = new Color(255, 0, 0, 255); // Solid red
-    private static final Color HOLE_2x1_COLOR = new Color(255, 165, 0, 255); // Solid orange
-    private static final Color HOLE_3x1_COLOR = new Color(255, 255, 0, 255); // Solid yellow
+    // Bright, solid colors
+    private static final Color HOLE_1x1_COLOR = new Color(255, 0, 0, 255);
+    private static final Color HOLE_2x1_COLOR = new Color(255, 165, 0, 255);
+    private static final Color HOLE_3x1_COLOR = new Color(255, 255, 0, 255);
     
     private int scanCooldown = 0;
     private final List<Hole> holes = new ArrayList<>();
@@ -95,7 +95,7 @@ public class HoleRenderer {
     }
     
     private boolean isTwoByOneHole(BlockPos pos) {
-        // Check for 2x1 hole
+        // Check for 2x1 hole (2 blocks wide)
         for (int i = 0; i < 3; i++) {
             if (!mc.world.getBlockState(pos.down(i)).isAir() ||
                 !mc.world.getBlockState(pos.down(i).east()).isAir()) {
@@ -110,7 +110,7 @@ public class HoleRenderer {
     }
     
     private boolean isThreeByOneHole(BlockPos pos) {
-        // Check for 3x1 hole
+        // Check for 3x1 hole (3 blocks wide)
         for (int i = 0; i < 3; i++) {
             if (!mc.world.getBlockState(pos.down(i)).isAir() ||
                 !mc.world.getBlockState(pos.down(i).east()).isAir() ||
@@ -126,6 +126,7 @@ public class HoleRenderer {
     }
     
     private boolean isSolidBlock(BlockPos pos) {
+        if (!mc.world.isChunkLoaded(pos)) return false;
         Block block = mc.world.getBlockState(pos).getBlock();
         return block != Blocks.AIR && 
                block != Blocks.CAVE_AIR &&
@@ -138,7 +139,7 @@ public class HoleRenderer {
         BlockPos pos = hole.pos;
         Color color = getColorForType(hole.type);
         
-        // Render a box around the hole entrance
+        // Calculate box boundaries
         double minX = pos.getX();
         double minY = pos.getY();
         double minZ = pos.getZ();
@@ -148,23 +149,20 @@ public class HoleRenderer {
         
         Box box = new Box(minX, minY, minZ, maxX, maxY, maxZ);
         
-        // Render the box outline (all edges)
-        renderBoxEdges(matrices, box, color);
+        // Render the box outline
+        renderBoxOutline(matrices, box, color);
         
-        // Render a thick vertical line going down
+        // Render vertical line going down
         double centerX = minX + (hole.type.width / 2.0);
         double centerZ = minZ + 0.5;
         double bottomY = pos.getY() - 15;
         
-        // Render multiple lines to make it thicker
-        for (double offset = -0.2; offset <= 0.2; offset += 0.2) {
-            RenderUtils.renderLine(matrices, color,
-                    new Vec3d(centerX + offset, minY, centerZ),
-                    new Vec3d(centerX + offset, bottomY, centerZ));
-        }
+        RenderUtils.renderLine(matrices, color,
+                new Vec3d(centerX, minY, centerZ),
+                new Vec3d(centerX, bottomY, centerZ));
     }
     
-    private void renderBoxEdges(MatrixStack matrices, Box box, Color color) {
+    private void renderBoxOutline(MatrixStack matrices, Box box, Color color) {
         // Bottom edges
         renderLine(matrices, box.minX, box.minY, box.minZ, box.maxX, box.minY, box.minZ, color);
         renderLine(matrices, box.maxX, box.minY, box.minZ, box.maxX, box.minY, box.maxZ, color);
