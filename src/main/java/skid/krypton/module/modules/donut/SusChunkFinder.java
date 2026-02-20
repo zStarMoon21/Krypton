@@ -1,5 +1,6 @@
 package skid.krypton.module.modules.donut;
 
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.WorldChunk;
 import skid.krypton.event.EventListener;
@@ -19,8 +20,8 @@ public final class SusChunkFinder extends Module {
 
     // Settings
     private final BooleanSetting renderChunks = new BooleanSetting("Render", true);
-    private final BooleanSetting showScore = new BooleanSetting("Show Score", false);
     private final NumberSetting threshold = new NumberSetting("Threshold", 10, 50, 26, 1);
+    private final NumberSetting scanInterval = new NumberSetting("Scan Interval", 10, 200, 40, 10);
 
     // Detection components
     private GrowthDetector growthDetector;
@@ -33,14 +34,17 @@ public final class SusChunkFinder extends Module {
     // Chunk data storage
     private final Map<ChunkPos, ChunkData> chunkDataMap = new ConcurrentHashMap<>();
     private final Set<ChunkPos> suspiciousChunks = ConcurrentHashMap.newKeySet();
+    private final Set<ChunkPos> scannedChunks = ConcurrentHashMap.newKeySet(); // Track scanned chunks
 
     // Scan timing
     private int scanCooldown = 0;
-    private static final int SCAN_INTERVAL = 40; // Scan every 2 seconds
+    private int cleanupCooldown = 0;
+    private int scanIndex = 0;
+    private List<WorldChunk> loadedChunks = new ArrayList<>();
 
     public SusChunkFinder() {
         super("SusChunk", "Highlights suspicious chunks in soft green", -1, Category.DONUT);
-        this.addSettings(renderChunks, showScore, threshold);
+        this.addSettings(renderChunks, threshold, scanInterval);
     }
 
     @Override
@@ -54,6 +58,7 @@ public final class SusChunkFinder extends Module {
 
         chunkDataMap.clear();
         suspiciousChunks.clear();
+        scannedChunks.clear();
 
         super.onEnable();
     }
@@ -62,6 +67,7 @@ public final class SusChunkFinder extends Module {
     public void onDisable() {
         chunkDataMap.clear();
         suspiciousChunks.clear();
+        scannedChunks.clear();
         super.onDisable();
     }
 
@@ -69,17 +75,32 @@ public final class SusChunkFinder extends Module {
     public void onTick(TickEvent event) {
         if (mc.world == null || mc.player == null) return;
 
-        // Scan chunks periodically
+        // Update loaded chunks list periodically (not every tick)
         if (--scanCooldown <= 0) {
-            scanLoadedChunks();
-            scanCooldown = SCAN_INTERVAL;
+            updateLoadedChunks();
+            scanCooldown = scanInterval.getIntValue();
         }
 
-        // Update uptime for all loaded chunks
-        for (WorldChunk chunk : getLoadedChunks()) {
+        // Scan one chunk per tick to spread out workload
+        if (!loadedChunks.isEmpty() && scanIndex < loadedChunks.size()) {
+            WorldChunk chunk = loadedChunks.get(scanIndex);
+            scanChunk(chunk);
+            scanIndex++;
+        } else {
+            scanIndex = 0;
+        }
+
+        // Update uptime for all loaded chunks (cheap operation)
+        for (WorldChunk chunk : loadedChunks) {
             ChunkPos pos = chunk.getPos();
             ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
             uptimeTracker.updateUptime(data);
+        }
+
+        // Clean up distant chunks periodically
+        if (--cleanupCooldown <= 0) {
+            cleanupDistantChunks();
+            cleanupCooldown = 200; // Every 10 seconds
         }
     }
 
@@ -88,63 +109,13 @@ public final class SusChunkFinder extends Module {
         if (!renderChunks.getValue() || mc.player == null || suspiciousChunks.isEmpty()) return;
 
         for (ChunkPos pos : suspiciousChunks) {
-            ChunkData data = chunkDataMap.get(pos);
-            if (data != null) {
-                chunkRenderer.renderChunkHighlight(
-                    event.matrixStack, 
-                    pos, 
-                    showScore.getValue() ? data.getTotalScore() : -1
-                );
-            }
+            chunkRenderer.renderChunkHighlight(event.matrixStack, pos);
         }
     }
 
-    private void scanLoadedChunks() {
-        int thresholdValue = threshold.getIntValue();
-
-        for (WorldChunk chunk : getLoadedChunks()) {
-            ChunkPos pos = chunk.getPos();
-            ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
-
-            // Reset score for new scan
-            int score = 0;
-
-            // 1. Growth detection
-            score += growthDetector.scanChunk(chunk, data);
-
-            // 2. Kelp gap detection (ocean bases)
-            if (kelpGapDetector.isOceanChunk(chunk)) {
-                score += kelpGapDetector.scanForKelpGaps(chunk, data);
-            }
-
-            // 3. Underground light detection
-            score += lightDetector.scanForLightPatterns(chunk, data);
-
-            // 4. Pillar detection
-            score += pillarDetector.scanForPillars(chunk, data);
-
-            // 5. Uptime score
-            score += uptimeTracker.calculateUptimeScore(data);
-
-            data.setTotalScore(score);
-            data.incrementTimesSeen();
-
-            // Mark as suspicious if threshold reached AND loaded for at least 30 seconds
-            if (score >= thresholdValue && data.getLoadTime() > 600) { // 30 seconds = 600 ticks
-                suspiciousChunks.add(pos);
-            } 
-            // Confidence check: if seen multiple times, keep it marked even if score drops slightly
-            else if (suspiciousChunks.contains(pos) && data.getTimesSeen() > 2) {
-                // Keep it marked - confidence is high
-            } else {
-                suspiciousChunks.remove(pos);
-            }
-        }
-    }
-
-    private List<WorldChunk> getLoadedChunks() {
-        List<WorldChunk> chunks = new ArrayList<>();
-        if (mc.world == null) return chunks;
+    private void updateLoadedChunks() {
+        loadedChunks.clear();
+        if (mc.world == null || mc.player == null) return;
 
         int viewDist = mc.options.getViewDistance().getValue();
         ChunkPos playerChunk = mc.player.getChunkPos();
@@ -153,10 +124,74 @@ public final class SusChunkFinder extends Module {
             for (int z = -viewDist; z <= viewDist; z++) {
                 WorldChunk chunk = mc.world.getChunkManager().getWorldChunk(playerChunk.x + x, playerChunk.z + z);
                 if (chunk != null) {
-                    chunks.add(chunk);
+                    loadedChunks.add(chunk);
                 }
             }
         }
-        return chunks;
+    }
+
+    private void scanChunk(WorldChunk chunk) {
+        if (chunk == null) return;
+
+        ChunkPos pos = chunk.getPos();
+        
+        // Only scan chunks that haven't been scanned yet
+        if (!scannedChunks.add(pos)) return;
+
+        ChunkData data = chunkDataMap.computeIfAbsent(pos, k -> new ChunkData(pos));
+
+        int score = 0;
+
+        // Growth detection
+        score += growthDetector.scanChunk(chunk, data);
+
+        // Kelp gap detection (ocean bases)
+        if (kelpGapDetector.isOceanChunk(chunk)) {
+            score += kelpGapDetector.scanForKelpGaps(chunk, data);
+        }
+
+        // Underground light detection
+        score += lightDetector.scanForLightPatterns(chunk, data);
+
+        // Pillar detection
+        score += pillarDetector.scanForPillars(chunk, data);
+
+        // Uptime score
+        score += uptimeTracker.calculateUptimeScore(data);
+
+        data.setTotalScore(score);
+        data.incrementTimesSeen();
+
+        // Mark as suspicious if threshold reached
+        if (score >= threshold.getIntValue()) {
+            suspiciousChunks.add(pos);
+        }
+    }
+
+    private void cleanupDistantChunks() {
+        if (mc.player == null) return;
+
+        int viewDist = mc.options.getViewDistance().getValue();
+        ChunkPos playerChunk = mc.player.getChunkPos();
+
+        // Remove chunks that are too far away
+        suspiciousChunks.removeIf(pos -> {
+            int dx = Math.abs(pos.x - playerChunk.x);
+            int dz = Math.abs(pos.z - playerChunk.z);
+            return dx > viewDist + 2 || dz > viewDist + 2;
+        });
+
+        scannedChunks.removeIf(pos -> {
+            int dx = Math.abs(pos.x - playerChunk.x);
+            int dz = Math.abs(pos.z - playerChunk.z);
+            return dx > viewDist + 4 || dz > viewDist + 4;
+        });
+
+        chunkDataMap.entrySet().removeIf(entry -> {
+            ChunkPos pos = entry.getKey();
+            int dx = Math.abs(pos.x - playerChunk.x);
+            int dz = Math.abs(pos.z - playerChunk.z);
+            return dx > viewDist + 4 || dz > viewDist + 4;
+        });
     }
 }
