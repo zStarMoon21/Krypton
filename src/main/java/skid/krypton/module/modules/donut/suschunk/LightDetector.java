@@ -10,9 +10,10 @@ public class LightDetector {
     public int scanForLightPatterns(WorldChunk chunk, ChunkData data) {
         int lightCount = 0;
 
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = chunk.getBottomY(); y <= 8; y++) {
+        // Scan only every 2 blocks for performance
+        for (int x = 0; x < 16; x += 2) {
+            for (int z = 0; z < 16; z += 2) {
+                for (int y = chunk.getBottomY(); y <= 8; y += 2) {
                     BlockPos pos = new BlockPos(chunk.getPos().getStartX() + x, y, chunk.getPos().getStartZ() + z);
 
                     if (chunk.getBlockState(pos).isAir()) continue;
@@ -25,9 +26,11 @@ public class LightDetector {
             }
         }
 
-        if (lightCount > 20) return 12;
+        // Scale score based on light count
+        if (lightCount > 30) return 12;
+        if (lightCount > 20) return 10;
         if (lightCount > 10) return 8;
-        if (lightCount > 5) return 4;
+        if (lightCount > 5) return 5;
         return 0;
     }
 
