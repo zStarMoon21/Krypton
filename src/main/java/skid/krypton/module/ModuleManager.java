@@ -49,6 +49,7 @@ public final class ModuleManager {
         this.a(new CordSnapper());
         this.a(new KeyPearl());
         this.a(new NameProtect());
+        this.a(new SkinProtect());
         this.a(new AutoTPA());
         this.a(new RtpBaseFinder());
         this.a(new TunnelBaseFinder());
